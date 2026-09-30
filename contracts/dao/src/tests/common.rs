@@ -65,7 +65,9 @@ impl RejectingToken {
         env.storage()
             .instance()
             .set(&from_key, &(from_balance - amount));
-        env.storage().instance().set(&to_key, &(to_balance + amount));
+        env.storage()
+            .instance()
+            .set(&to_key, &(to_balance + amount));
     }
 }
 

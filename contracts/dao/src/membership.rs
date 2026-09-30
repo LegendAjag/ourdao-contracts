@@ -15,15 +15,22 @@ pub fn register_member(env: &Env, member: Address) -> Result<(), Error> {
     member.require_auth();
 
     // Reject only genuinely active members; a previously-exited member may rejoin.
-    if let Some(existing) = storage::get_member(env, &member) {
-        if existing.status == MemberStatus::ActiveMember {
+    let existing = storage::get_member(env, &member);
+    if let Some(ref record) = existing {
+        if record.status == MemberStatus::ActiveMember {
             return Err(Error::AlreadyMember);
         }
     }
 
     let fee = storage::get_membership_fee(env);
 
-    let is_returning = storage::get_member(env, &member).is_some();
+    let is_returning = existing.is_some();
+    // Preserve the member's lifetime loan counters across an exit/rejoin so the
+    // on-chain credit track record isn't reset when they come back.
+    let (total_loans, repaid_loans, active_loans) = match &existing {
+        Some(record) => (record.total_loans, record.repaid_loans, record.active_loans),
+        None => (0, 0, 0),
+    };
     let record = Member {
         address: member.clone(),
         status: MemberStatus::ActiveMember,
@@ -32,6 +39,9 @@ pub fn register_member(env: &Env, member: Address) -> Result<(), Error> {
         share_balance: fee,
         has_active_loan: false,
         last_loan_time: 0,
+        total_loans,
+        repaid_loans,
+        active_loans,
     };
     storage::set_member(env, &record);
 
@@ -51,7 +61,7 @@ pub fn register_member(env: &Env, member: Address) -> Result<(), Error> {
 
     // Interaction last (checks-effects-interactions): the fee transfer only
     // happens once every state transition above has completed.
-    util::token_client(env).transfer(&member, &util::contract_address(env), &fee);
+    util::token_client(env).transfer(&member, util::contract_address(env), &fee);
 
     env.events()
         .publish((symbol_short!("joined"),), (member, fee));
@@ -149,4 +159,23 @@ fn compute_pending_yield(env: &Env, addr: &Address) -> i128 {
     let acc = storage::get_yield_accumulator(env);
     let snap = storage::get_yield_snapshot(env, addr);
     (acc - snap).max(0)
+}
+
+#[allow(deprecated)]
+pub fn delegate_vote(env: &Env, delegator: Address, delegatee: Address) -> Result<(), Error> {
+    util::require_initialized(env)?;
+    util::require_not_paused(env)?;
+    delegator.require_auth();
+
+    util::require_active_member(env, &delegator)?;
+    util::require_active_member(env, &delegatee)?;
+
+    if delegator == delegatee {
+        return Err(Error::InvalidDelegation);
+    }
+
+    storage::set_delegation(env, &delegator, &delegatee);
+    env.events()
+        .publish((symbol_short!("delegate"),), (delegator, delegatee));
+    Ok(())
 }

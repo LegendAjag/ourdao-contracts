@@ -230,10 +230,7 @@ pub fn vote_on_loan_proposal(
     } else {
         storage::get_threshold(env)
     };
-    let required = util::required_votes(
-        storage::get_active_members(env),
-        threshold,
-    );
+    let required = util::required_votes(storage::get_active_members(env), threshold);
     if proposal.for_votes >= required && proposal.status == ProposalStatus::Pending {
         proposal.status = ProposalStatus::ApprovedPendingDisbursement;
         proposal.phase = ProposalPhase::Executed;
@@ -281,7 +278,7 @@ fn approve_and_disburse(env: &Env, proposal: &LoanProposal) -> Result<(), Error>
     if util::treasury_balance(env) < proposal.amount {
         return Err(Error::InsufficientTreasury);
     }
-    
+
     // Issue 61: re-quote at disbursement so rate reflects current treasury balance
     let terms = calculate_loan_terms(env, proposal.amount);
 
@@ -308,6 +305,8 @@ fn approve_and_disburse(env: &Env, proposal: &LoanProposal) -> Result<(), Error>
     let mut borrower = storage::get_member(env, &proposal.borrower).ok_or(Error::NotMember)?;
     borrower.has_active_loan = true;
     borrower.last_loan_time = now;
+    borrower.total_loans += 1;
+    borrower.active_loans += 1;
     storage::set_member(env, &borrower);
 
     util::token_client(env).transfer(
@@ -318,7 +317,12 @@ fn approve_and_disburse(env: &Env, proposal: &LoanProposal) -> Result<(), Error>
 
     env.events().publish(
         (symbol_short!("loan_appr"),),
-        (id, proposal.borrower.clone(), proposal.amount, loan.due_time),
+        (
+            id,
+            proposal.borrower.clone(),
+            proposal.amount,
+            loan.due_time,
+        ),
     );
     Ok(())
 }
@@ -378,7 +382,17 @@ fn repay_loan_internal(
         return Err(Error::LoanNotActive);
     }
 
-    let outstanding = loan.total_repayment - loan.amount_repaid;
+    let mut outstanding = loan.total_repayment - loan.amount_repaid;
+
+    let now = env.ledger().timestamp();
+    if now > loan.due_time {
+        let policy = storage::get_policy(env);
+        let penalty = outstanding * (policy.default_penalty_bps as i128) / crate::types::BASIS_POINTS;
+        outstanding += penalty;
+        loan.total_repayment += penalty;
+        loan.principal += penalty; // Keep penalty in treasury, don't distribute as interest
+    }
+
     let amount = amount.unwrap_or(outstanding);
     if amount <= 0 || amount > outstanding {
         return Err(Error::InvalidAmount);
@@ -400,6 +414,8 @@ fn repay_loan_internal(
         loan.status = LoanStatus::Repaid;
         if let Some(mut member) = storage::get_member(env, &borrower) {
             member.has_active_loan = false;
+            member.repaid_loans += 1;
+            member.active_loans = member.active_loans.saturating_sub(1);
             storage::set_member(env, &member);
         }
     }
@@ -479,6 +495,9 @@ pub fn mark_loan_defaulted(env: &Env, loan_id: u32) -> Result<(), Error> {
             .min(member.contribution);
         member.contribution -= penalty;
         member.has_active_loan = false;
+        // Defaulted loans are terminal but were never repaid, so only the
+        // outstanding count changes — `repaid_loans` deliberately stays put.
+        member.active_loans = member.active_loans.saturating_sub(1);
         storage::set_member(env, &member);
         if penalty > 0 {
             storage::set_total_contributions(env, storage::get_total_contributions(env) - penalty);
@@ -511,19 +530,19 @@ pub(crate) fn distribute_interest(env: &Env, interest: i128) {
     if interest <= 0 || active == 0 {
         return;
     }
-    
+
     // #60 — Carry the sub-divisible remainder forward instead of silently discarding
     let total_interest = interest + storage::get_yield_remainder(env);
     let per_member = total_interest / active;
     let remainder = total_interest % active;
-    
+
     storage::set_yield_remainder(env, remainder);
-    
+
     if per_member > 0 {
         let current = storage::get_yield_accumulator(env);
         storage::set_yield_accumulator(env, current + per_member);
     }
-    
+
     // Unconditionally publish the event so the indexer sees the interest paid
     env.events()
         .publish((symbol_short!("interest"),), (interest, active));

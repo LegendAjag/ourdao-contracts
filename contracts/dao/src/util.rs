@@ -2,7 +2,7 @@ use soroban_sdk::{token, Address, Env};
 
 use crate::error::Error;
 use crate::storage;
-use crate::types::{Member, MemberStatus};
+use crate::types::{Member, MemberStatus, ProposalStatus};
 
 /// Staked tokens are turned into bonus voting weight on a *quadratic* (square
 /// root) curve, and this is the number of staked tokens whose square root is
@@ -77,7 +77,18 @@ pub fn require_active_member(env: &Env, caller: &Address) -> Result<Member, Erro
 /// One base vote per active member, plus a quadratic (square-root) boost for
 /// staked commitment, capped at `MAX_STAKE_BONUS`.
 pub fn voting_weight(env: &Env, who: &Address) -> i128 {
-    BASE_VOTE_WEIGHT + stake_boost(storage::get_stake(env, who))
+    if let Some(_) = storage::get_delegation(env, who) {
+        return 0; // delegated their vote away
+    }
+    let mut total = BASE_VOTE_WEIGHT + stake_boost(storage::get_stake(env, who));
+    for member in storage::get_members(env).iter() {
+        if let Some(delegatee) = storage::get_delegation(env, &member) {
+            if delegatee == *who {
+                total += BASE_VOTE_WEIGHT + stake_boost(storage::get_stake(env, &member));
+            }
+        }
+    }
+    total
 }
 
 /// Bonus votes earned by `staked` under the quadratic staking curve:
@@ -152,4 +163,21 @@ pub fn required_votes(active_members: u32, threshold_bps: u32) -> i128 {
     let base = active_members as i128;
     let bp = crate::types::BASIS_POINTS;
     (base * threshold_bps as i128 + bp - 1) / bp
+}
+
+/// Returns the total amount committed to loan proposals that have passed
+/// quorum but have not yet been disbursed (status == ApprovedPendingDisbursement).
+/// These funds are effectively reserved and must not be double-counted as
+/// available treasury for new withdrawals (#172).
+pub fn reserved_loan_commitments(env: &Env) -> i128 {
+    let count = storage::get_proposal_count(env, storage::DataKey::NextProposalId);
+    let mut total: i128 = 0;
+    for id in 0..count {
+        if let Some(proposal) = storage::get_loan_proposal(env, id) {
+            if proposal.status == ProposalStatus::ApprovedPendingDisbursement {
+                total += proposal.amount;
+            }
+        }
+    }
+    total
 }
