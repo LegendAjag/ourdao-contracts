@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, String};
+use soroban::{contracttype, Address, String};
 
 /// Basis-points denominator (100% == 10_000).
 pub const BASIS_POINTS: i128 = 10_000;
@@ -8,7 +8,7 @@ pub const NAME_MIN_LEN: u32 = 3;
 /// storage and every `name_reg` event payload bounded.
 pub const NAME_MAX_LEN: u32 = 32;
 
-#[contracttype]
+#contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MemberStatus {
     ActiveMember,
@@ -94,6 +94,8 @@ pub struct LoanProposal {
     pub votes_cast: u32,
     pub voting_period: u64,
     pub metadata_cid: Option<String>,
+    /// Stellar asset address the loan is denominated in.
+    pub asset: Address,
 }
 
 #[contracttype]
@@ -108,6 +110,10 @@ pub struct Loan {
     pub due_time: u64,
     pub status: LoanStatus,
     pub amount_repaid: i128,
+    /// Stellar asset the loan was issued in.
+    pub asset: Address,
+    /// Stellar asset the loan must be repaid in.
+    pub repayment_asset: Address,
 }
 
 #[contracttype]
@@ -127,6 +133,8 @@ pub struct TreasuryProposal {
     pub treasury_threshold: u32,
     /// When true, votes must be committed then revealed (commit-reveal privacy).
     pub private: bool,
+    /// Stellar asset the treasury payout is denominated in.
+    pub asset: Address,
 }
 
 /// Computed loan terms returned by the read-only quote helper.
@@ -154,4 +162,36 @@ pub struct StakingRewardClaimed {
     pub member: Address,
     pub amount: i128,
     pub timestamp: u64,
+}
+
+/// An approved Stellar asset that the treasury may accept deposits in and
+/// issue loans in. Admins propose and add tokens to the whitelist.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TokenWhitelist {
+    /// Stellar asset contract address.
+    pub asset: Address,
+    /// Human-readable symbol (e.g. "USDX", "XEL").
+    pub symbol: String,
+    /// Ledger timestamp the asset was added.
+    pub added_at: u64,
+    /// Whether the asset is currently accepted for deposits and loans.
+    pub active: bool,
+}
+
+/// Proposal to add a new token to the treasury whitelist.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TokenWhitelistProposal {
+    pub id: u32,
+    pub proposer: Address,
+    pub asset: Address,
+    pub symbol: String,
+    pub created_at: u64,
+    pub status: ProposalStatus,
+    pub for_votes: i128,
+    pub against_votes: i128,
+    pub votes_cast: u32,
+    pub voting_period: u64,
+    pub treasury_threshold: u32,
 }

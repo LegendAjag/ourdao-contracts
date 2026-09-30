@@ -2,7 +2,7 @@ use soroban_sdk::{symbol_short, Address, Env, String};
 
 use crate::error::Error;
 use crate::storage;
-use crate::types::{
+use crate::types:{
     Loan, LoanProposal, LoanStatus, LoanTerms, MemberStatus, ProposalPhase, ProposalStatus,
     BASIS_POINTS,
 };
@@ -146,7 +146,7 @@ pub fn edit_loan_proposal(
         (symbol_short!("loan_edit"),),
         (proposal_id, borrower, new_amount, terms.total_repayment),
     );
-    Ok(())
+    Ok(()
 }
 
 /// Advances a proposal's phase based on the clock. Returns the (possibly
@@ -234,7 +234,7 @@ pub fn vote_on_loan_proposal(
             proposal.status = ProposalStatus::Rejected;
             proposal.phase = ProposalPhase::Expired;
             env.events().publish(
-                (symbol_short!("loan_rej"),),
+                (symbol_short!("loan_rejB),),
                 (proposal.id, proposal.for_votes, proposal.against_votes),
             );
         }
@@ -300,7 +300,7 @@ fn approve_and_disburse(env: &Env, proposal: &LoanProposal) -> Result<(), Error>
         (symbol_short!("loan_appr"),),
         (id, proposal.borrower.clone(), proposal.amount, loan.due_time),
     );
-    Ok(())
+    Ok(()
 }
 
 /// Repays a loan's entire remaining balance in one transaction. A thin
@@ -329,13 +329,16 @@ pub fn repay_loan(env: &Env, borrower: Address, loan_id: u32) -> Result<(), Erro
 /// the ABI isn't upgradeable once deployed, and a new entrypoint leaves
 /// every existing caller of `repay_loan(borrower, loan_id)` — including
 /// `ourdao-backend` and any already-deployed clients — untouched, at the
-/// cost of two entrypoints sharing one code path instead of one.
+/// cost of two entrypoints sharing one code path in
 pub fn repay_loan_partial(
     env: &Env,
     borrower: Address,
     loan_id: u32,
     amount: i128,
 ) -> Result<(), Error> {
+    if amount <= 0 {
+        return Err(Error::InvalidAmount);
+    }
     repay_loan_internal(env, borrower, loan_id, Some(amount))
 }
 
@@ -347,7 +350,7 @@ fn repay_loan_internal(
 ) -> Result<(), Error> {
     util::require_initialized(env)?;
     util::require_not_paused(env)?;
-    borrower.require_auth();
+    util::require_active_member(env, &borrower)?;
 
     let mut loan = storage::get_loan(env, loan_id).ok_or(Error::LoanNotFound)?;
     if loan.borrower != borrower {
@@ -357,150 +360,45 @@ fn repay_loan_internal(
         return Err(Error::LoanNotActive);
     }
 
-    let outstanding = loan.total_repayment - loan.amount_repaid;
-    let amount = amount.unwrap_or(outstanding);
-    if amount <= 0 || amount > outstanding {
-        return Err(Error::InvalidAmount);
-    }
-
-    util::token_client(env).transfer(&borrower, util::contract_address(env), &amount);
-
-    // Interest-first split: how much of the loan's total interest was
-    // already covered before this payment vs. after it. The difference is
-    // the interest component of *this* payment; everything else is principal.
-    let interest_total = loan.total_repayment - loan.principal;
-    let interest_before = loan.amount_repaid.min(interest_total);
-    loan.amount_repaid += amount;
-    let interest_after = loan.amount_repaid.min(interest_total);
-    let interest_component = interest_after - interest_before;
-
-    let remaining = loan.total_repayment - loan.amount_repaid;
-    if remaining == 0 {
-        loan.status = LoanStatus::Repaid;
-        if let Some(mut member) = storage::get_member(env, &borrower) {
-            member.has_active_loan = false;
-            storage::set_member(env, &member);
+    let outstanding = loan.total_repayment.saturating_sub(loan.amount_repaid);
+    let payment = match amount {
+        Some(a) => {
+            if a > outstanding {
+                return Err(Error::InvalidAmount);
+            }
+            a
         }
-    }
-    storage::set_loan(env, &loan);
+        None => outstanding,
+    };
 
-    distribute_interest(env, interest_component);
+    // Interest first, then principal.
+    let total_interest = loan.total_repayment.saturating_sub(loan.principal);
+    let interest_paid_so_far = loan.amount_repaid.min(total_interest);
+    let interest_remaining = total_interest.saturating_sub(interest_paid_so_far);
+    let interest_portion = payment.min(interest_remaining);
 
-    env.events()
-        .publish((symbol_short!("loan_rpy"),), (loan_id, borrower, remaining));
-    Ok(())
-}
-
-/// Permissionless keeper call: persists the expired/rejected transition for a
-/// loan proposal whose voting window has passed without reaching quorum.
-/// Succeeds exactly once per proposal — subsequent calls are a no-op (no
-/// double event).
-pub fn expire_loan_proposal(env: &Env, proposal_id: u32) -> Result<(), Error> {
-    util::require_initialized(env)?;
-    util::require_not_paused(env)?;
-    let mut proposal =
-        storage::get_loan_proposal(env, proposal_id).ok_or(Error::ProposalNotFound)?;
-    proposal = refresh_phase(env, proposal);
-    if proposal.phase != ProposalPhase::Expired {
-        return Err(Error::ProposalNotExpired);
-    }
-    // Check if already persisted (no-op for repeat calls).
-    // Re-read from storage to compare: if already Expired, skip.
-    if let Some(original) = storage::get_loan_proposal(env, proposal_id) {
-        if original.phase == ProposalPhase::Expired {
-            return Ok(());
-        }
-    }
-    storage::set_loan_proposal(env, &proposal);
-    storage::extend_instance(env);
-
-    env.events().publish(
-        (symbol_short!("loan_exp"),),
-        (proposal_id, proposal.borrower),
+    util::token_client(env).transfer(f
+        &borrower,
+        &util::contract_address(env),
+        &payment,
     );
-    Ok(())
-}
 
-/// Marks an overdue loan as defaulted. Permissionless and callable by anyone
-/// once `due_time + policy.default_grace_period` has passed — this is an
-/// objective, time-based state transition (a keeper call), not an admin
-/// action, so there's nothing to authorize.
-///
-/// Consequence: the borrower's `contribution` (their pro-rata claim on the
-/// treasury via `calculate_exit_share`) is slashed by `default_penalty_bps`,
-/// and `has_active_loan` is cleared. Clearing the flag is deliberate: it lets
-/// a defaulted borrower still exit the DAO with their reduced share rather
-/// than being trapped (exit is blocked while `has_active_loan` is true), and
-/// lets them request a new loan again after the normal cooldown. Like
-/// `Repaid`, `Defaulted` is terminal — a defaulted loan can't later be repaid.
-pub fn mark_loan_defaulted(env: &Env, loan_id: u32) -> Result<(), Error> {
-    util::require_initialized(env)?;
-    util::require_not_paused(env)?;
-    let mut loan = storage::get_loan(env, loan_id).ok_or(Error::LoanNotFound)?;
-    if loan.status != LoanStatus::Active {
-        return Err(Error::LoanNotActive);
+    if interest_portion > 0 {
+        util::distribute_yield(env, interest_portion);
     }
 
-    let policy = storage::get_policy(env);
-    let now = env.ledger().timestamp();
-    if now < loan.due_time + policy.default_grace_period {
-        return Err(Error::LoanNotOverdue);
-    }
-
-    loan.status = LoanStatus::Defaulted;
-    storage::set_loan(env, &loan);
-
-    let mut penalty: i128 = 0;
-    if let Some(mut member) = storage::get_member(env, &loan.borrower) {
-        penalty = (member.contribution * policy.default_penalty_bps as i128 / BASIS_POINTS)
-            .min(member.contribution);
-        member.contribution -= penalty;
+    loan.amount_repaid = loan.amount_repaid.saturating_add(payment);
+    if loan.amount_repaid >= loan.total_repayment {
+        loan.status = LoanStatus::Repaid;
+        let mut member = storage::get_member(env, &borrower).ok_or(Error::NotMember)?;
         member.has_active_loan = false;
         storage::set_member(env, &member);
-        if penalty > 0 {
-            storage::set_total_contributions(env, storage::get_total_contributions(env) - penalty);
-        }
     }
-    storage::extend_instance(env);
+    storage::set_loan(env, &loan);
 
     env.events().publish(
-        (symbol_short!("loan_dflt"),),
-        (loan_id, loan.borrower.clone(), penalty),
+        (symbol_short!("loan_repay"),),
+        (loan_id, borrower, payment, loan.amount_repaid),
     );
-    Ok(())
-}
-
-/// Splits repaid interest equally across active members as claimable yield.
-/// Any indivisible remainder is retained by the treasury.
-///
-/// Uses a pull-based accumulator: instead of iterating every member and
-/// bumping their `PendingYield` (O(n)), we increment a global
-/// `YieldAccumulator` by `interest / active_members`. Each member stores
-/// a snapshot of the accumulator at their last interaction (join, claim,
-/// or exit). Their pending yield is `(accumulator - snapshot) * 1`.
-///
-/// `pub(crate)` (rather than private) solely so the property tests in
-/// `test.rs` can drive it directly with arbitrary `interest` values instead
-/// of only the ones reachable through a real loan's computed interest.
-pub(crate) fn distribute_interest(env: &Env, interest: i128) {
-    let active = storage::get_active_members(env) as i128;
-    if interest <= 0 || active == 0 {
-        return;
-    }
-    
-    // #60 — Carry the sub-divisible remainder forward instead of silently discarding
-    let total_interest = interest + storage::get_yield_remainder(env);
-    let per_member = total_interest / active;
-    let remainder = total_interest % active;
-    
-    storage::set_yield_remainder(env, remainder);
-    
-    if per_member > 0 {
-        let current = storage::get_yield_accumulator(env);
-        storage::set_yield_accumulator(env, current + per_member);
-    }
-    
-    // Unconditionally publish the event so the indexer sees the interest paid
-    env.events()
-        .publish((symbol_short!("interest"),), (interest, active));
+    Ok(()
 }
