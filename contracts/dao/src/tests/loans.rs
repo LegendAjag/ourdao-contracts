@@ -671,3 +671,42 @@ fn edit_loan_proposal_emits_loan_edit_event() {
     let expected = s.client.calculate_loan_terms(&600);
     assert_eq!(after.total_repayment, expected.total_repayment);
 }
+
+// ===========================================================================
+// Issue #173: Off-by-one in voting period deadline comparison
+// ===========================================================================
+
+#[test]
+fn voting_closed_exactly_at_deadline() {
+    // At now == deadline a vote must be rejected (VotingEnded), not accepted.
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let voter = s.members.get(1).unwrap();
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    // Advance to exactly the voting deadline (editing_period_end + voting_period).
+    advance(&s.env, EDITING + VOTING_PERIOD);
+
+    let res = s.client.try_vote_on_loan_proposal(&voter, &pid, &true);
+    assert_eq!(
+        res,
+        Err(Ok(crate::Error::VotingEnded)),
+        "vote at exact deadline must be rejected"
+    );
+}
+
+#[test]
+fn voting_open_one_second_before_deadline() {
+    // One second before deadline a vote must still be accepted.
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let voter = s.members.get(1).unwrap();
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    // Advance to one second before the voting deadline.
+    advance(&s.env, EDITING + VOTING_PERIOD - 1);
+
+    s.client.vote_on_loan_proposal(&voter, &pid, &true);
+    let prop = s.client.get_loan_proposal(&pid).unwrap();
+    assert!(prop.for_votes > 0, "vote should have been recorded");
+}

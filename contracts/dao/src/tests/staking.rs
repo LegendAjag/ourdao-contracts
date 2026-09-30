@@ -402,3 +402,81 @@ fn stake_threshold_constants_are_discoverable() {
     assert_eq!(s.client.get_stake_weight_unit(), crate::util::STAKE_WEIGHT_UNIT);
     assert_eq!(s.client.get_max_stake_bonus(), crate::util::MAX_STAKE_BONUS);
 }
+
+// ===========================================================================
+// Issue #175: Prevent unstaking while member has an active pending proposal
+// ===========================================================================
+
+#[test]
+fn unstake_rejected_while_proposal_in_voting() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+
+    s.client.stake(&borrower, &200);
+    let pid = s.client.request_loan(&borrower, &500, &None);
+
+    advance(&s.env, EDITING + 1);
+    let prop = s.client.get_loan_proposal(&pid).unwrap();
+    assert_eq!(prop.phase, crate::types::ProposalPhase::Voting);
+
+    let res = s.client.try_unstake(&borrower, &200);
+    assert_eq!(
+        res,
+        Err(Ok(crate::Error::HasActiveLoan)),
+        "should not be able to unstake with an active pending proposal"
+    );
+}
+
+#[test]
+fn unstake_rejected_while_proposal_in_editing() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+
+    s.client.stake(&borrower, &200);
+    let _pid = s.client.request_loan(&borrower, &500, &None);
+
+    let res = s.client.try_unstake(&borrower, &200);
+    assert_eq!(
+        res,
+        Err(Ok(crate::Error::HasActiveLoan)),
+        "should not be able to unstake with a proposal in editing phase"
+    );
+}
+
+#[test]
+fn unstake_allowed_after_proposal_approved() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+
+    s.client.stake(&borrower, &200);
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid, &true);
+
+    let prop = s.client.get_loan_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Approved);
+
+    // Advance past the stake cooldown (voting_period).
+    advance(&s.env, VOTING_PERIOD + 1);
+
+    s.client.unstake(&borrower, &200);
+    assert_eq!(s.client.get_stake(&borrower), 0);
+}
+
+#[test]
+fn unstake_allowed_after_proposal_expired() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+
+    s.client.stake(&borrower, &200);
+    let _pid = s.client.request_loan(&borrower, &500, &None);
+
+    // Advance well past the voting deadline so the proposal expires.
+    advance(&s.env, EDITING + VOTING_PERIOD + 1);
+
+    s.client.unstake(&borrower, &200);
+    assert_eq!(s.client.get_stake(&borrower), 0);
+}
