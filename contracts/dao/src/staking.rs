@@ -60,7 +60,7 @@ pub fn unstake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
         .get(&crate::storage::DataKey::StakeTime(member.clone()))
         .unwrap_or(0);
     let policy = storage::get_policy(env);
-    if env.ledger().timestamp() < last_stake + policy.voting_period {
+    if env.ledger().timestamp() < last_stake + policy.cooldown_period {
         return Err(Error::CooldownActive);
     }
 

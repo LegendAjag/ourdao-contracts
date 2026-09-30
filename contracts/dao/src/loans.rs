@@ -15,16 +15,30 @@ pub fn calculate_loan_terms(env: &Env, amount: i128) -> LoanTerms {
     let treasury = util::treasury_balance(env);
 
     let loan_ratio = if treasury > 0 {
-        (amount * BASIS_POINTS / treasury).min(BASIS_POINTS)
+        amount
+            .checked_mul(BASIS_POINTS)
+            .and_then(|v| v.checked_div(treasury))
+            .unwrap_or(BASIS_POINTS)
+            .min(BASIS_POINTS)
     } else {
         BASIS_POINTS
     };
     let spread = (policy.max_interest_rate - policy.min_interest_rate) as i128;
-    let mut rate = policy.min_interest_rate as i128 + (loan_ratio * spread / BASIS_POINTS);
-    if rate > policy.max_interest_rate as i128 {
-        rate = policy.max_interest_rate as i128;
-    }
-    let total_repayment = amount + (amount * rate / BASIS_POINTS);
+    let added_rate = loan_ratio
+        .checked_mul(spread)
+        .and_then(|v| v.checked_div(BASIS_POINTS))
+        .unwrap_or(spread);
+    let rate = (policy.min_interest_rate as i128)
+        .checked_add(added_rate)
+        .unwrap_or(policy.max_interest_rate as i128)
+        .min(policy.max_interest_rate as i128);
+
+    let interest = amount
+        .checked_mul(rate)
+        .and_then(|v| v.checked_div(BASIS_POINTS))
+        .unwrap_or(i128::MAX - amount);
+    let total_repayment = amount.checked_add(interest).unwrap_or(i128::MAX);
+
     LoanTerms {
         interest_rate: rate as u32,
         total_repayment,
@@ -361,6 +375,27 @@ pub fn repay_loan_partial(
     amount: i128,
 ) -> Result<(), Error> {
     repay_loan_internal(env, borrower, loan_id, Some(amount))
+}
+
+pub fn repay_partial(
+    env: &Env,
+    borrower: Address,
+    amount: i128,
+) -> Result<(), Error> {
+    let next_id = storage::next_id(env, storage::DataKey::NextProposalId);
+    let mut loan_id_opt = None;
+    for i in 1..next_id {
+        if let Some(loan) = storage::get_loan(env, i) {
+            if loan.borrower == borrower && loan.status == LoanStatus::Active {
+                loan_id_opt = Some(i);
+                break;
+            }
+        }
+    }
+    let loan_id = loan_id_opt.ok_or(Error::LoanNotFound)?;
+    repay_loan_internal(env, borrower.clone(), loan_id, Some(amount))?;
+    env.events().publish((soroban_sdk::String::from_str(env, "loan_partial_repaid"),), (borrower, amount));
+    Ok(())
 }
 
 #[allow(deprecated)]

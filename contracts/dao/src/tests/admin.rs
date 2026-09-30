@@ -386,6 +386,9 @@ fn get_version_returns_cargo_pkg_version() {
 
     let version = client.get_version();
     assert_eq!(version, String::from_str(&env, env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
 fn test_bump_dao_ttl() {
     let s = setup(1);
     s.client.bump_dao_ttl();
