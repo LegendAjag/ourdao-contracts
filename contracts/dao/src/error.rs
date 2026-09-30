@@ -75,4 +75,5 @@ pub enum Error {
     InvalidMetadataCid = 78,
     /// Invalid delegation target (e.g. self-delegation) (#188).
     InvalidDelegation = 79,
+    InvalidProposal = 80,
 }
