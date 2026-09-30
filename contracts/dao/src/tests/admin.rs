@@ -64,38 +64,82 @@ fn pause_blocks_all_mutating_entrypoints() {
 
     // ==================== Membership ====================
     let res = s.client.try_register_member(&newcomer);
-    assert_eq!(res, Err(Ok(Error::Paused)), "register_member should be pause-gated");
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "register_member should be pause-gated"
+    );
 
     let res = s.client.try_exit_dao(&borrower);
-    assert_eq!(res, Err(Ok(Error::Paused)), "exit_dao should be pause-gated");
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "exit_dao should be pause-gated"
+    );
 
     let res = s.client.try_claim_rewards(&borrower);
-    assert_eq!(res, Err(Ok(Error::Paused)), "claim_rewards should be pause-gated");
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "claim_rewards should be pause-gated"
+    );
 
     // ==================== Loans ====================
     let res = s.client.try_request_loan(&borrower, &1000, &None);
-    assert_eq!(res, Err(Ok(Error::Paused)), "request_loan should be pause-gated");
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "request_loan should be pause-gated"
+    );
 
     let res = s.client.try_edit_loan_proposal(&borrower, &loan_pid, &600);
-    assert_eq!(res, Err(Ok(Error::Paused)), "edit_loan_proposal should be pause-gated");
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "edit_loan_proposal should be pause-gated"
+    );
 
     let res = s.client.try_vote_on_loan_proposal(&voter, &loan_pid, &true);
-    assert_eq!(res, Err(Ok(Error::Paused)), "vote_on_loan_proposal should be pause-gated");
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "vote_on_loan_proposal should be pause-gated"
+    );
 
     let res = s.client.try_disburse_approved_loan(&loan_pid);
-    assert_eq!(res, Err(Ok(Error::Paused)), "disburse_approved_loan should be pause-gated");
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "disburse_approved_loan should be pause-gated"
+    );
 
     let res = s.client.try_repay_loan(&borrower, &0);
-    assert_eq!(res, Err(Ok(Error::Paused)), "repay_loan should be pause-gated");
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "repay_loan should be pause-gated"
+    );
 
     let res = s.client.try_repay_loan_partial(&borrower, &0, &100);
-    assert_eq!(res, Err(Ok(Error::Paused)), "repay_loan_partial should be pause-gated");
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "repay_loan_partial should be pause-gated"
+    );
 
     let res = s.client.try_mark_loan_defaulted(&0);
-    assert_eq!(res, Err(Ok(Error::Paused)), "mark_loan_defaulted should be pause-gated");
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "mark_loan_defaulted should be pause-gated"
+    );
 
     let res = s.client.try_expire_loan_proposal(&0);
-    assert_eq!(res, Err(Ok(Error::Paused)), "expire_loan_proposal should be pause-gated");
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "expire_loan_proposal should be pause-gated"
+    );
 
     // ==================== Treasury ====================
     let res = s.client.try_propose_treasury_withdrawal(
@@ -105,16 +149,34 @@ fn pause_blocks_all_mutating_entrypoints() {
         &String::from_slice(&s.env, "test"),
         &false,
     );
-    assert_eq!(res, Err(Ok(Error::Paused)), "propose_treasury_withdrawal should be pause-gated");
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "propose_treasury_withdrawal should be pause-gated"
+    );
 
-    let res = s.client.try_vote_on_treasury_proposal(&voter, &treasury_pid, &true);
-    assert_eq!(res, Err(Ok(Error::Paused)), "vote_on_treasury_proposal should be pause-gated");
+    let res = s
+        .client
+        .try_vote_on_treasury_proposal(&voter, &treasury_pid, &true);
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "vote_on_treasury_proposal should be pause-gated"
+    );
 
     let res = s.client.try_expire_treasury_proposal(&0);
-    assert_eq!(res, Err(Ok(Error::Paused)), "expire_treasury_proposal should be pause-gated");
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "expire_treasury_proposal should be pause-gated"
+    );
 
     let res = s.client.try_execute_treasury_proposal(&0);
-    assert_eq!(res, Err(Ok(Error::Paused)), "execute_treasury_proposal should be pause-gated");
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "execute_treasury_proposal should be pause-gated"
+    );
 
     // ==================== Staking ====================
     let res = s.client.try_stake(&staker, &100);
@@ -124,22 +186,46 @@ fn pause_blocks_all_mutating_entrypoints() {
     assert_eq!(res, Err(Ok(Error::Paused)), "unstake should be pause-gated");
 
     // ==================== Registry ====================
-    let res = s.client.try_register_name(&borrower, &String::from_slice(&s.env, "test"));
-    assert_eq!(res, Err(Ok(Error::Paused)), "register_name should be pause-gated");
+    let res = s
+        .client
+        .try_register_name(&borrower, &String::from_slice(&s.env, "test"));
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "register_name should be pause-gated"
+    );
 
     // ==================== Privacy (commit-reveal voting) ====================
     let commitment = BytesN::from_array(&s.env, &[0u8; 32]);
-    let res = s.client.try_commit_treasury_vote(&voter, &treasury_pid, &commitment);
-    assert_eq!(res, Err(Ok(Error::Paused)), "commit_treasury_vote should be pause-gated");
+    let res = s
+        .client
+        .try_commit_treasury_vote(&voter, &treasury_pid, &commitment);
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "commit_treasury_vote should be pause-gated"
+    );
 
     let salt = BytesN::from_array(&s.env, &[0u8; 32]);
-    let res = s.client.try_reveal_treasury_vote(&voter, &treasury_pid, &true, &salt);
-    assert_eq!(res, Err(Ok(Error::Paused)), "reveal_treasury_vote should be pause-gated");
+    let res = s
+        .client
+        .try_reveal_treasury_vote(&voter, &treasury_pid, &true, &salt);
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "reveal_treasury_vote should be pause-gated"
+    );
 
     // ==================== Docs (content-hash metadata) ====================
     let cid = Bytes::from_slice(&s.env, &[1, 2, 3]);
-    let res = s.client.try_attach_document(&borrower, &ProposalKind::Loan, &loan_pid, &cid);
-    assert_eq!(res, Err(Ok(Error::Paused)), "attach_document should be pause-gated");
+    let res = s
+        .client
+        .try_attach_document(&borrower, &ProposalKind::Loan, &loan_pid, &cid);
+    assert_eq!(
+        res,
+        Err(Ok(Error::Paused)),
+        "attach_document should be pause-gated"
+    );
 
     // Verify unpause works
     s.client.unpause(&s.admin);
@@ -182,7 +268,10 @@ fn initialize_rejects_account_address_as_token() {
     let env = Env::default();
     env.mock_all_auths();
     let not_a_contract = Address::generate(&env);
-    assert_eq!(init_with_token(&env, &not_a_contract), Err(Error::InvalidToken));
+    assert_eq!(
+        init_with_token(&env, &not_a_contract),
+        Err(Error::InvalidToken)
+    );
 }
 
 #[test]
@@ -230,7 +319,10 @@ fn policy_update_timelock_enforced() {
 
     let pending = s.client.get_pending_policy_update().unwrap();
     assert_eq!(pending.policy.max_loan_duration, 60 * 24 * 60 * 60);
-    assert_eq!(pending.execution_time, pending.proposed_at + TIMELOCK_DURATION);
+    assert_eq!(
+        pending.execution_time,
+        pending.proposed_at + TIMELOCK_DURATION
+    );
 
     // Attempting to execute immediately fails with TimelockNotExpired
     let early = s.client.try_execute_policy_update(&s.admin);

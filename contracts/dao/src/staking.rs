@@ -26,7 +26,10 @@ pub fn stake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
     let new_stake = storage::get_stake(env, &member) + amount;
     storage::set_stake(env, &member, new_stake);
     storage::set_total_staked(env, storage::get_total_staked(env) + amount);
-    env.storage().persistent().set(&crate::storage::DataKey::StakeTime(member.clone()), &env.ledger().timestamp());
+    env.storage().persistent().set(
+        &crate::storage::DataKey::StakeTime(member.clone()),
+        &env.ledger().timestamp(),
+    );
     storage::extend_instance(env);
 
     env.events()
@@ -51,7 +54,11 @@ pub fn unstake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
         return Err(Error::InsufficientStake);
     }
 
-    let last_stake: u64 = env.storage().persistent().get(&crate::storage::DataKey::StakeTime(member.clone())).unwrap_or(0);
+    let last_stake: u64 = env
+        .storage()
+        .persistent()
+        .get(&crate::storage::DataKey::StakeTime(member.clone()))
+        .unwrap_or(0);
     let policy = storage::get_policy(env);
     if env.ledger().timestamp() < last_stake + policy.voting_period {
         return Err(Error::CooldownActive);

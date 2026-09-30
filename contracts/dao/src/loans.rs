@@ -230,10 +230,7 @@ pub fn vote_on_loan_proposal(
     } else {
         storage::get_threshold(env)
     };
-    let required = util::required_votes(
-        storage::get_active_members(env),
-        threshold,
-    );
+    let required = util::required_votes(storage::get_active_members(env), threshold);
     if proposal.for_votes >= required && proposal.status == ProposalStatus::Pending {
         proposal.status = ProposalStatus::ApprovedPendingDisbursement;
         proposal.phase = ProposalPhase::Executed;
@@ -281,7 +278,7 @@ fn approve_and_disburse(env: &Env, proposal: &LoanProposal) -> Result<(), Error>
     if util::treasury_balance(env) < proposal.amount {
         return Err(Error::InsufficientTreasury);
     }
-    
+
     // Issue 61: re-quote at disbursement so rate reflects current treasury balance
     let terms = calculate_loan_terms(env, proposal.amount);
 
@@ -320,7 +317,12 @@ fn approve_and_disburse(env: &Env, proposal: &LoanProposal) -> Result<(), Error>
 
     env.events().publish(
         (symbol_short!("loan_appr"),),
-        (id, proposal.borrower.clone(), proposal.amount, loan.due_time),
+        (
+            id,
+            proposal.borrower.clone(),
+            proposal.amount,
+            loan.due_time,
+        ),
     );
     Ok(())
 }
@@ -528,19 +530,19 @@ pub(crate) fn distribute_interest(env: &Env, interest: i128) {
     if interest <= 0 || active == 0 {
         return;
     }
-    
+
     // #60 — Carry the sub-divisible remainder forward instead of silently discarding
     let total_interest = interest + storage::get_yield_remainder(env);
     let per_member = total_interest / active;
     let remainder = total_interest % active;
-    
+
     storage::set_yield_remainder(env, remainder);
-    
+
     if per_member > 0 {
         let current = storage::get_yield_accumulator(env);
         storage::set_yield_accumulator(env, current + per_member);
     }
-    
+
     // Unconditionally publish the event so the indexer sees the interest paid
     env.events()
         .publish((symbol_short!("interest"),), (interest, active));
