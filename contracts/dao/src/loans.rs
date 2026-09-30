@@ -206,7 +206,9 @@ pub fn vote_on_loan_proposal(
         return Err(Error::VotingEnded);
     }
     let now = env.ledger().timestamp();
-    if now > proposal.editing_period_end + proposal.voting_period {
+    // Issue #173: use >= so voting is closed at exactly the deadline second,
+    // making voting and post-voting execution strictly mutually exclusive.
+    if now >= proposal.editing_period_end + proposal.voting_period {
         return Err(Error::VotingEnded);
     }
     if storage::has_loan_voted(env, proposal_id, &voter) {

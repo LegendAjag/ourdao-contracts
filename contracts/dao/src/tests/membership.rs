@@ -187,3 +187,33 @@ fn rejected_register_member_transfer_rolls_back_all_membership_state() {
     assert!(s.client.get_member(&member).is_none());
     assert_eq!(s.token.balance(&s.client.address), 0);
 }
+
+// ===========================================================================
+// Issue #176: Handle token transfer failure cleanly in exit_dao
+// ===========================================================================
+
+#[test]
+fn exit_dao_returns_error_when_contract_balance_insufficient() {
+    let s = rejecting_setup(2);
+    let member = s.members.get(0).unwrap();
+
+    // Reject all outgoing transfers to simulate a depleted/frozen treasury.
+    s.token.set_reject_transfers(&true);
+
+    let res = s.client.try_exit_dao(&member);
+    assert!(
+        res.is_err(),
+        "exit_dao must fail cleanly when contract cannot pay out"
+    );
+}
+
+#[test]
+fn exit_dao_succeeds_when_treasury_funded() {
+    let s = setup(2);
+    let member = s.members.get(0).unwrap();
+
+    let share = s.client.calculate_exit_share(&member);
+    assert!(share > 0);
+    s.client.exit_dao(&member);
+    assert!(!s.client.is_member(&member));
+}

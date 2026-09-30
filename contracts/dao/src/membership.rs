@@ -82,7 +82,14 @@ pub fn exit_dao(env: &Env, member: Address) -> Result<(), Error> {
     let pending = compute_pending_yield(env, &member);
     let payout = share + stake + pending;
 
+    // Issue #176: check the contract's actual token balance before attempting
+    // the transfer so a temporarily depleted treasury returns a typed error
+    // instead of trapping with an uninformative host panic.
     if payout > 0 {
+        let contract_balance = util::token_client(env).balance(&util::contract_address(env));
+        if contract_balance < payout {
+            return Err(Error::InsufficientTreasury);
+        }
         util::token_client(env).transfer(&util::contract_address(env), &member, &payout);
     }
     if stake > 0 {

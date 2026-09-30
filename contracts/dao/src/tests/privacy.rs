@@ -95,3 +95,78 @@ fn has_voted_treasury_commit_reveal() {
     s.client.commit_treasury_vote(&v1, &pid, &commitment);
     assert!(s.client.has_voted(&ProposalKind::Treasury, &pid, &v1));
 }
+
+// ===========================================================================
+// Issue #174: Verify reveal salt / commitment hash validation
+// ===========================================================================
+
+#[test]
+fn reveal_with_correct_salt_tallies_vote() {
+    let s = setup(3);
+    let proposer = s.members.get(0).unwrap();
+    let voter = s.members.get(1).unwrap();
+    let dest = Address::generate(&s.env);
+
+    let reason = String::from_str(&s.env, "private grant");
+    let pid = s
+        .client
+        .propose_treasury_withdrawal(&proposer, &300, &dest, &reason, &true);
+
+    let salt = BytesN::from_array(&s.env, &[42u8; 32]);
+    let commitment = compute_commitment(&s.env, true, &salt);
+    s.client.commit_treasury_vote(&voter, &pid, &commitment);
+
+    advance(&s.env, VOTING_PERIOD + 1);
+
+    // Correct salt reveals cleanly.
+    s.client.reveal_treasury_vote(&voter, &pid, &true, &salt);
+    assert!(s
+        .client
+        .has_voted(&ProposalKind::Treasury, &pid, &voter));
+}
+
+#[test]
+fn reveal_with_mismatched_salt_returns_commitment_mismatch() {
+    let s = setup(3);
+    let proposer = s.members.get(0).unwrap();
+    let voter = s.members.get(1).unwrap();
+    let dest = Address::generate(&s.env);
+
+    let reason = String::from_str(&s.env, "private grant");
+    let pid = s
+        .client
+        .propose_treasury_withdrawal(&proposer, &300, &dest, &reason, &true);
+
+    let real_salt = BytesN::from_array(&s.env, &[1u8; 32]);
+    let wrong_salt = BytesN::from_array(&s.env, &[2u8; 32]);
+    let commitment = compute_commitment(&s.env, true, &real_salt);
+    s.client.commit_treasury_vote(&voter, &pid, &commitment);
+
+    advance(&s.env, VOTING_PERIOD + 1);
+
+    let res = s.client.try_reveal_treasury_vote(&voter, &pid, &true, &wrong_salt);
+    assert_eq!(res, Err(Ok(Error::CommitmentMismatch)));
+}
+
+#[test]
+fn reveal_with_wrong_support_returns_commitment_mismatch() {
+    let s = setup(3);
+    let proposer = s.members.get(0).unwrap();
+    let voter = s.members.get(1).unwrap();
+    let dest = Address::generate(&s.env);
+
+    let reason = String::from_str(&s.env, "private grant");
+    let pid = s
+        .client
+        .propose_treasury_withdrawal(&proposer, &300, &dest, &reason, &true);
+
+    let salt = BytesN::from_array(&s.env, &[7u8; 32]);
+    let commitment = compute_commitment(&s.env, true, &salt);
+    s.client.commit_treasury_vote(&voter, &pid, &commitment);
+
+    advance(&s.env, VOTING_PERIOD + 1);
+
+    // Committed true but reveals false — hash mismatch.
+    let res = s.client.try_reveal_treasury_vote(&voter, &pid, &false, &salt);
+    assert_eq!(res, Err(Ok(Error::CommitmentMismatch)));
+}

@@ -7,6 +7,7 @@ use soroban_sdk::{symbol_short, Address, Env};
 
 use crate::error::Error;
 use crate::storage;
+use crate::types::{ProposalPhase, ProposalStatus};
 use crate::util;
 
 // `env.events().publish` is deprecated in soroban-sdk in favour of
@@ -62,6 +63,21 @@ pub fn unstake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
     let policy = storage::get_policy(env);
     if env.ledger().timestamp() < last_stake + policy.voting_period {
         return Err(Error::CooldownActive);
+    }
+
+    // Issue #175: disallow unstaking while the member has an active pending
+    // loan proposal still in the voting phase (collateral must remain locked
+    // until the proposal reaches a terminal state).
+    let proposal_count = storage::get_proposal_count(env, storage::DataKey::NextProposalId);
+    for id in 0..proposal_count {
+        if let Some(p) = storage::get_loan_proposal(env, id) {
+            if p.borrower == member
+                && (p.phase == ProposalPhase::Editing || p.phase == ProposalPhase::Voting)
+                && p.status == ProposalStatus::Pending
+            {
+                return Err(Error::HasActiveLoan);
+            }
+        }
     }
 
     let new_stake = current - amount;
