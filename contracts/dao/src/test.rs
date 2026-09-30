@@ -13,6 +13,101 @@ use crate::admin::TIMELOCK_DURATION;
 use crate::types::{LoanPolicy, LoanStatus, MemberStatus, ProposalPhase, ProposalStatus};
 use crate::{Error, OurDao, OurDaoClient};
 
+#[soroban_sdk::contracttype]
+#[derive(Clone)]
+enum RejectingTokenKey {
+    Balance(Address),
+    RejectTransfers,
+}
+
+#[soroban_sdk::contract]
+struct RejectingToken;
+
+#[soroban_sdk::contractimpl]
+impl RejectingToken {
+    pub fn mint(env: Env, to: Address, amount: i128) {
+        let key = RejectingTokenKey::Balance(to);
+        let current: i128 = env.storage().instance().get(&key).unwrap_or(0);
+        env.storage().instance().set(&key, &(current + amount));
+    }
+
+    pub fn set_reject_transfers(env: Env, reject: bool) {
+        env.storage()
+            .instance()
+            .set(&RejectingTokenKey::RejectTransfers, &reject);
+    }
+
+    pub fn balance(env: Env, id: Address) -> i128 {
+        env.storage()
+            .instance()
+            .get(&RejectingTokenKey::Balance(id))
+            .unwrap_or(0)
+    }
+
+    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
+        let reject: bool = env
+            .storage()
+            .instance()
+            .get(&RejectingTokenKey::RejectTransfers)
+            .unwrap_or(false);
+        if reject {
+            panic!("mock token transfer rejected");
+        }
+        if amount < 0 {
+            panic!("negative transfer");
+        }
+
+        let from_key = RejectingTokenKey::Balance(from);
+        let to_key = RejectingTokenKey::Balance(to);
+        let from_balance: i128 = env.storage().instance().get(&from_key).unwrap_or(0);
+        if from_balance < amount {
+            panic!("insufficient balance");
+        }
+        let to_balance: i128 = env.storage().instance().get(&to_key).unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&from_key, &(from_balance - amount));
+        env.storage().instance().set(&to_key, &(to_balance + amount));
+    }
+}
+
+struct RejectingSetup<'a> {
+    env: Env,
+    client: OurDaoClient<'a>,
+    token: RejectingTokenClient<'a>,
+    members: Vec<Address>,
+}
+
+fn rejecting_setup(num_members: u32) -> RejectingSetup<'static> {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let token_id = env.register(RejectingToken, ());
+    let token = RejectingTokenClient::new(&env, &token_id);
+    let admin = Address::generate(&env);
+    let contract_id = env.register(OurDao, ());
+    let client = OurDaoClient::new(&env, &contract_id);
+
+    let mut admins = Vec::new(&env);
+    admins.push_back(admin);
+    client.initialize(&admins, &5_100u32, &FEE, &token_id, &policy());
+
+    let mut members = Vec::new(&env);
+    for _ in 0..num_members {
+        let member = Address::generate(&env);
+        token.mint(&member, &MINT);
+        client.register_member(&member);
+        members.push_back(member);
+    }
+
+    RejectingSetup {
+        env,
+        client,
+        token,
+        members,
+    }
+}
+
 const FEE: i128 = 1_000;
 const MINT: i128 = 1_000_000;
 const EDITING: u64 = 3 * 24 * 60 * 60;
