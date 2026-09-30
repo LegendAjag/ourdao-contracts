@@ -1889,6 +1889,118 @@ fn proposal_creation_rejects_invalid_cid() {
     let err_long = s.client.try_request_loan(&borrower, &500, &Some(long_cid));
     assert_eq!(err_long, Err(Ok(Error::DocumentTooLarge)));
 }
+
+// ===========================================================================
+// Issue: Emit ProposalCancelled event when proposal is retracted during
+// editing period
+// ===========================================================================
+
+#[test]
+fn cancel_loan_proposal_emits_event_and_sets_cancelled_status() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    let prop = s.client.get_loan_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Pending);
+    assert_eq!(prop.phase, ProposalPhase::Editing);
+
+    s.client.cancel_loan_proposal(&borrower, &pid);
+
+    let prop = s.client.get_loan_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Cancelled);
+
+    assert!(emitted(&s.env, "prop_canc"));
+
+    let all_events = s.env.events().all();
+    let events_vec = all_events.events();
+    let event = events_vec
+        .iter()
+        .rev()
+        .find(|e| {
+            let ContractEventBody::V0(body) = &e.body;
+            matches!(body.topics.first(), Some(ScVal::Symbol(sym)) if sym.0.to_utf8_string_lossy() == "prop_canc")
+        })
+        .expect("prop_canc event not found");
+
+    let ContractEventBody::V0(body) = &event.body;
+    assert_eq!(body.topics.len(), 2);
+    match &body.topics[0] {
+        ScVal::Symbol(sym) => assert_eq!(sym.0.to_utf8_string_lossy(), "prop_canc"),
+        _ => panic!("unexpected topic 0"),
+    }
+    match &body.topics[1] {
+        ScVal::U64(id) => assert_eq!(*id, pid),
+        _ => panic!("unexpected topic 1"),
+    }
+}
+
+#[test]
+fn cancel_treasury_proposal_emits_event_and_sets_cancelled_status() {
+    let s = setup(3);
+    let proposer = s.members.get(0).unwrap();
+    let dest = Address::generate(&s.env);
+    let reason = String::from_str(&s.env, "grant");
+
+    let pid = s
+        .client
+        .propose_treasury_withdrawal(&proposer, &600, &dest, &reason, &false);
+    let prop = s.client.get_treasury_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Pending);
+
+    s.client.cancel_treasury_proposal(&proposer, &pid);
+
+    let prop = s.client.get_treasury_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Cancelled);
+
+    assert!(emitted(&s.env, "prop_canc"));
+
+    let all_events = s.env.events().all();
+    let events_vec = all_events.events();
+    let event = events_vec
+        .iter()
+        .rev()
+        .find(|e| {
+            let ContractEventBody::V0(body) = &e.body;
+            matches!(body.topics.first(), Some(ScVal::Symbol(sym)) if sym.0.to_utf8_string_lossy() == "prop_canc")
+        })
+        .expect("prop_canc event not found");
+
+    let ContractEventBody::V0(body) = &event.body;
+    assert_eq!(body.topics.len(), 2);
+    match &body.topics[0] {
+        ScVal::Symbol(sym) => assert_eq!(sym.0.to_utf8_string_lossy(), "prop_canc"),
+        _ => panic!("unexpected topic 0"),
+    }
+    match &body.topics[1] {
+        ScVal::U64(id) => assert_eq!(*id, pid),
+        _ => panic!("unexpected topic 1"),
+    }
+}
+
+#[test]
+fn cancel_loan_proposal_after_editing_period_rejected() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + 1);
+
+    let res = s.client.try_cancel_loan_proposal(&borrower, &pid);
+    assert_eq!(res, Err(Ok(Error::NotInEditingPhase)));
+}
+
+#[test]
+fn cancel_loan_proposal_by_non_proposer_rejected() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let other = s.members.get(1).unwrap();
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+
+    let res = s.client.try_cancel_loan_proposal(&other, &pid);
+    assert_eq!(res, Err(Ok(Error::NotAuthorized)));
+}
 fn rejected_treasury_transfer_rolls_back_approval_vote_and_execution_state() {
     let s = rejecting_setup(3);
     let proposer = s.members.get(0).unwrap();

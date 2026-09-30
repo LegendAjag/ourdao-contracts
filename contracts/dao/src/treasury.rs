@@ -108,7 +108,7 @@ pub fn tally(
     if proposal.for_votes >= required {
         proposal.status = ProposalStatus::ApprovedPendingDisbursement;
         storage::set_treasury_proposal(env, &proposal);
-        if execute(env, &mut proposal).is_err() {
+        if execute(env, &mut proposal).is_error() {
             env.events()
                 .publish((symbol_short!("tre_wait"),), (proposal.id, proposal.amount));
         }
@@ -157,6 +157,43 @@ fn execute(env: &Env, proposal: &mut TreasuryProposal) -> Result<(), Error> {
     Ok(())
 }
 
+/// Cancel a treasury proposal during its editing period. Only the original
+/// proposer may cancel, only while the proposal is still Pending and within
+/// the editing window. Emits a dedicated `ProposalCancelled` event so
+/// off-chain indexers can track cancellations cleanly.
+pub fn cancel_treasury_proposal(
+    env: &Env,
+    proposer: Address,
+    proposal_id: u32,
+) -> Result<(), Error> {
+    util::require_initialized(env)?;
+    util::require_not_paused(env)?;
+    util::require_active_member(env, &proposer)?;
+    let mut proposal = storage::get_treasury_proposal(env, proposal_id)
+        .ok_or(Error::TreasuryProposalNotFound)?;
+    if proposal.proposer != proposer {
+        return Err(Error::NotAuthorized);
+    }
+    if proposal.status != ProposalStatus::Pending {
+        return Err(Error::NotInVotingPhase);
+    }
+    let now = env.ledger().timestamp();
+    // Treasury proposals don't carry an explicit editing window; treat the
+    // editing period as the policy's editing_period from creation.
+    let policy = storage::get_policy(env);
+    if now > proposal.created_at + policy.editing_period {
+        return Err(Error::NotInEditingPhase);
+    }
+
+    proposal.status = ProposalStatus::Cancelled;
+    storage::set_treasury_proposal(env, &proposal);
+
+    env.events().publish(
+        (symbol_short!("prop_canc"),),
+        (proposal_id, now),
+    );
+    Ok(())
+}
 
 pub fn expire_treasury_proposal(env: &Env, proposal_id: u32) -> Result<(), Error> {
     util::require_initialized(env)?;
