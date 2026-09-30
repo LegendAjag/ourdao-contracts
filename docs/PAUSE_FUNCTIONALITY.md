@@ -21,7 +21,7 @@ The original pause implementation only blocked 8 state-changing operations while
 ### Intentional Exceptions (No Pause Check):
 1. `repay_loan` / `repay_loan_partial` - Borrowers should be able to repay loans even during emergency pauses to avoid being forced into default through no fault of their own.
 
-2. Admin functions (`pause`, `unpause`, `add_admin`, `remove_admin`, `set_consensus_threshold`, `set_policy`) - Admin operations must remain available to control the pause state itself.
+2. Admin functions (`unpause`, `add_admin`, `remove_admin`, `set_pauser`, `revoke_pauser`, `set_consensus_threshold`, `set_policy`) - Governance operations remain available to control the pause state and its authorities.
 
 ### Already Had Pause Checks:
 1. `register_member`
@@ -35,13 +35,18 @@ The original pause implementation only blocked 8 state-changing operations while
 ## Technical Implementation
 - All pause checks use `util::require_not_paused(env)?` which calls `storage::is_paused(env)`
 - The `Error::Paused` error is returned when contract is paused
-- Admin can call `pause()` and `unpause()` even when contract is in any state
+- Admin can call `pause()` and `unpause()`; the assigned pauser can call `pause()`
 
 ## Emergency Stop Behavior
-When `pause()` is called by an admin:
+An admin can assign one dedicated pauser with `set_pauser()` and remove that
+assignment with `revoke_pauser()`. Only admins can change the pauser assignment.
+The assigned pauser can call `pause()` without receiving any governance powers.
+Admins can also call `pause()` directly. Only an admin can call `unpause()`.
+
+When `pause()` is called by an admin or the assigned pauser:
 - All new value transfers out of the contract are blocked (exit_dao, claim_rewards, unstake, disburse_approved_loan, execute_approved)
 - All state-changing operations are blocked (except repay_loan and admin functions)
-- The contract can be resumed with `unpause()` by an admin
+- The contract can be resumed with `unpause()` only by an admin
 - This ensures that if an exploit is discovered, admins can freeze the contract before value leaves
 
 ## Verification

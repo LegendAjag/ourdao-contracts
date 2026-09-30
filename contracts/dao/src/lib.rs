@@ -71,6 +71,14 @@ impl OurDao {
         admin::remove_admin(&env, caller, admin)
     }
 
+    pub fn set_pauser(env: Env, caller: Address, pauser: Address) -> Result<(), Error> {
+        admin::set_pauser(&env, caller, pauser)
+    }
+
+    pub fn revoke_pauser(env: Env, caller: Address) -> Result<(), Error> {
+        admin::revoke_pauser(&env, caller)
+    }
+
     pub fn set_consensus_threshold(env: Env, caller: Address, threshold: u32) -> Result<(), Error> {
         admin::set_consensus_threshold(&env, caller, threshold)
     }

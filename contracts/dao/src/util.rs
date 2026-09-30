@@ -50,6 +50,10 @@ pub fn is_admin(env: &Env, who: &Address) -> bool {
     storage::get_admins(env).iter().any(|a| &a == who)
 }
 
+pub fn is_pauser(env: &Env, who: &Address) -> bool {
+    storage::get_pauser(env).as_ref() == Some(who)
+}
+
 /// Authorizes `caller` and asserts admin membership.
 pub fn require_admin(env: &Env, caller: &Address) -> Result<(), Error> {
     caller.require_auth();

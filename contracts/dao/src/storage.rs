@@ -55,6 +55,7 @@ pub enum DataKey {
     NameOf(Address),
     Commit(u32, Address),
     TotalContributions,
+    Pauser,
 }
 
 pub fn extend_instance(env: &Env) {
@@ -81,6 +82,18 @@ pub fn get_admins(env: &Env) -> Vec<Address> {
 
 pub fn set_admins(env: &Env, admins: &Vec<Address>) {
     env.storage().instance().set(&DataKey::Admins, admins);
+}
+
+pub fn get_pauser(env: &Env) -> Option<Address> {
+    env.storage().instance().get(&DataKey::Pauser)
+}
+
+pub fn set_pauser(env: &Env, pauser: &Address) {
+    env.storage().instance().set(&DataKey::Pauser, pauser);
+}
+
+pub fn remove_pauser(env: &Env) {
+    env.storage().instance().remove(&DataKey::Pauser);
 }
 
 pub fn get_threshold(env: &Env) -> u32 {

@@ -137,6 +137,30 @@ pub fn remove_admin(env: &Env, caller: Address, admin: Address) -> Result<(), Er
 }
 
 #[allow(deprecated)]
+pub fn set_pauser(env: &Env, caller: Address, pauser: Address) -> Result<(), Error> {
+    util::require_admin(env, &caller)?;
+    if storage::get_pauser(env).as_ref() == Some(&pauser) {
+        return Err(Error::AlreadyPauser);
+    }
+    storage::set_pauser(env, &pauser);
+    extend_instance(env);
+    env.events().publish((symbol_short!("pset"),), pauser);
+    Ok(())
+}
+
+#[allow(deprecated)]
+pub fn revoke_pauser(env: &Env, caller: Address) -> Result<(), Error> {
+    util::require_admin(env, &caller)?;
+    if storage::get_pauser(env).is_none() {
+        return Err(Error::NotPauser);
+    }
+    storage::remove_pauser(env);
+    extend_instance(env);
+    env.events().publish((symbol_short!("prev"),), caller);
+    Ok(())
+}
+
+#[allow(deprecated)]
 pub fn set_consensus_threshold(env: &Env, caller: Address, threshold: u32) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     if threshold == 0 || threshold as i128 > BASIS_POINTS {
@@ -208,7 +232,10 @@ pub fn set_policy(env: &Env, caller: Address, policy: LoanPolicy) -> Result<(), 
 
 #[allow(deprecated)]
 pub fn pause(env: &Env, caller: Address) -> Result<(), Error> {
-    util::require_admin(env, &caller)?;
+    caller.require_auth();
+    if !util::is_admin(env, &caller) && !util::is_pauser(env, &caller) {
+        return Err(Error::NotAdmin);
+    }
     if storage::is_paused(env) {
         return Err(Error::Paused);
     }

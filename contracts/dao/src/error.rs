@@ -73,4 +73,6 @@ pub enum Error {
     NoPendingPolicy = 77,
     /// Proposal metadata CID is invalid (#194).
     InvalidMetadataCid = 78,
+    AlreadyPauser = 79,
+    NotPauser = 80,
 }
