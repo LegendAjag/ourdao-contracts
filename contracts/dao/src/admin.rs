@@ -44,6 +44,11 @@ fn validate_token(env: &Env, token: &Address) -> Result<(), Error> {
     }
 }
 
+// `env.events().publish` is deprecated in soroban-sdk in favour of
+// `#[contractevent]`, but migration changes the wire format and is a
+// coordinated, breaking change.  Suppress only in functions that publish events
+// so unrelated future deprecations still surface via `cargo clippy -D warnings`.
+#[allow(deprecated)]
 pub fn initialize(
     env: &Env,
     admins: Vec<Address>,
@@ -92,6 +97,7 @@ pub fn initialize(
     Ok(())
 }
 
+#[allow(deprecated)]
 pub fn add_admin(env: &Env, caller: Address, admin: Address) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     let mut admins = storage::get_admins(env);
@@ -105,6 +111,7 @@ pub fn add_admin(env: &Env, caller: Address, admin: Address) -> Result<(), Error
     Ok(())
 }
 
+#[allow(deprecated)]
 pub fn remove_admin(env: &Env, caller: Address, admin: Address) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     let admins = storage::get_admins(env);
@@ -129,6 +136,7 @@ pub fn remove_admin(env: &Env, caller: Address, admin: Address) -> Result<(), Er
     Ok(())
 }
 
+#[allow(deprecated)]
 pub fn set_consensus_threshold(env: &Env, caller: Address, threshold: u32) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     if threshold == 0 || threshold as i128 > BASIS_POINTS {
@@ -141,7 +149,12 @@ pub fn set_consensus_threshold(env: &Env, caller: Address, threshold: u32) -> Re
     Ok(())
 }
 
-pub fn propose_policy_update(env: &Env, caller: Address, policy: LoanPolicy) -> Result<(), Error> {
+#[allow(deprecated)]
+pub fn propose_policy_update(
+    env: &Env,
+    caller: Address,
+    policy: LoanPolicy,
+) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     validate_policy(&policy)?;
     let now = env.ledger().timestamp();
@@ -158,6 +171,7 @@ pub fn propose_policy_update(env: &Env, caller: Address, policy: LoanPolicy) -> 
     Ok(())
 }
 
+#[allow(deprecated)]
 pub fn execute_policy_update(env: &Env, caller: Address) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     let update = storage::get_pending_policy_update(env).ok_or(Error::NoPendingPolicy)?;
@@ -172,6 +186,7 @@ pub fn execute_policy_update(env: &Env, caller: Address) -> Result<(), Error> {
     Ok(())
 }
 
+#[allow(deprecated)]
 pub fn cancel_policy_update(env: &Env, caller: Address) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     if storage::get_pending_policy_update(env).is_none() {
@@ -191,6 +206,7 @@ pub fn set_policy(env: &Env, caller: Address, policy: LoanPolicy) -> Result<(), 
     propose_policy_update(env, caller, policy)
 }
 
+#[allow(deprecated)]
 pub fn pause(env: &Env, caller: Address) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     if storage::is_paused(env) {
@@ -202,6 +218,7 @@ pub fn pause(env: &Env, caller: Address) -> Result<(), Error> {
     Ok(())
 }
 
+#[allow(deprecated)]
 pub fn unpause(env: &Env, caller: Address) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     if !storage::is_paused(env) {

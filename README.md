@@ -204,7 +204,7 @@ Numeric codes are stable and part of the ABI — new variants get appended rathe
 
 ## Build & test
 
-Requires the Rust `wasm32v1-none` target and the [`stellar` CLI](https://developers.stellar.org/docs/tools/developer-tools/cli/stellar-cli). The repository pins its compiler in `rust-toolchain.toml` (currently **1.94.0**, minimum **1.84** for `wasm32v1-none`). Running `rustup show` in the repo root installs the pinned toolchain automatically.
+Requires the Rust `wasm32v1-none` target (Rust 1.84+) and the [`stellar` CLI](https://developers.stellar.org/docs/tools/developer-tools/cli/stellar-cli).
 
 ```bash
 # Native unit tests — including loan defaults, commit-reveal privacy,

@@ -6,11 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-# Cancel superseded runs on PRs; never cancel runs on main.
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
-
 env:
   CARGO_TERM_COLOR: always
   # soroban-sdk requires the wasm32v1-none target (Rust 1.84+).
@@ -19,18 +14,14 @@ env:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        # Reads the channel, components, and targets from rust-toolchain.toml,
-        # keeping the version single-sourced.
-        uses: dtolnay/rust-toolchain@master
-
-      - name: Resolve toolchain version for cache key
-        id: toolchain
-        run: echo "version=$(rustc --version | tr ' ' '-')" >> "$GITHUB_OUTPUT"
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32v1-none
 
       - name: Cache cargo registry and build
         uses: actions/cache@v4
@@ -39,9 +30,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ steps.toolchain.outputs.version }}-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-${{ steps.toolchain.outputs.version }}-
             ${{ runner.os }}-cargo-
 
       - name: Format check
@@ -72,7 +62,6 @@ jobs:
 
   supply-chain:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -92,7 +81,6 @@ jobs:
 
   reproducible-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     permissions:
       contents: read
     steps:

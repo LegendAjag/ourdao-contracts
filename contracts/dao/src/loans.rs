@@ -53,6 +53,10 @@ pub fn is_eligible_for_loan(env: &Env, member: &Address) -> Result<(), Error> {
     Ok(())
 }
 
+// `env.events().publish` is deprecated in soroban-sdk in favour of
+// `#[contractevent]`, but migration is a coordinated, breaking wire-format
+// change (#85).  Suppress per-function so unrelated deprecations still surface.
+#[allow(deprecated)]
 pub fn request_loan(
     env: &Env,
     borrower: Address,
@@ -114,6 +118,7 @@ pub fn request_loan(
     Ok(id)
 }
 
+#[allow(deprecated)]
 pub fn edit_loan_proposal(
     env: &Env,
     borrower: Address,
@@ -179,6 +184,7 @@ pub fn refresh_phase(env: &Env, mut proposal: LoanProposal) -> LoanProposal {
     proposal
 }
 
+#[allow(deprecated)]
 pub fn vote_on_loan_proposal(
     env: &Env,
     voter: Address,
@@ -267,6 +273,7 @@ pub fn disburse_approved_loan(env: &Env, proposal_id: u32) -> Result<(), Error> 
     Ok(())
 }
 
+#[allow(deprecated)]
 fn approve_and_disburse(env: &Env, proposal: &LoanProposal) -> Result<(), Error> {
     if util::treasury_balance(env) < proposal.amount {
         return Err(Error::InsufficientTreasury);
@@ -298,6 +305,8 @@ fn approve_and_disburse(env: &Env, proposal: &LoanProposal) -> Result<(), Error>
     let mut borrower = storage::get_member(env, &proposal.borrower).ok_or(Error::NotMember)?;
     borrower.has_active_loan = true;
     borrower.last_loan_time = now;
+    borrower.total_loans += 1;
+    borrower.active_loans += 1;
     storage::set_member(env, &borrower);
 
     util::token_client(env).transfer(
@@ -354,6 +363,7 @@ pub fn repay_loan_partial(
     repay_loan_internal(env, borrower, loan_id, Some(amount))
 }
 
+#[allow(deprecated)]
 fn repay_loan_internal(
     env: &Env,
     borrower: Address,
@@ -372,7 +382,17 @@ fn repay_loan_internal(
         return Err(Error::LoanNotActive);
     }
 
-    let outstanding = loan.total_repayment - loan.amount_repaid;
+    let mut outstanding = loan.total_repayment - loan.amount_repaid;
+
+    let now = env.ledger().timestamp();
+    if now > loan.due_time {
+        let policy = storage::get_policy(env);
+        let penalty = outstanding * (policy.default_penalty_bps as i128) / crate::types::BASIS_POINTS;
+        outstanding += penalty;
+        loan.total_repayment += penalty;
+        loan.principal += penalty; // Keep penalty in treasury, don't distribute as interest
+    }
+
     let amount = amount.unwrap_or(outstanding);
     if amount <= 0 || amount > outstanding {
         return Err(Error::InvalidAmount);
@@ -394,6 +414,8 @@ fn repay_loan_internal(
         loan.status = LoanStatus::Repaid;
         if let Some(mut member) = storage::get_member(env, &borrower) {
             member.has_active_loan = false;
+            member.repaid_loans += 1;
+            member.active_loans = member.active_loans.saturating_sub(1);
             storage::set_member(env, &member);
         }
     }
@@ -410,6 +432,7 @@ fn repay_loan_internal(
 /// loan proposal whose voting window has passed without reaching quorum.
 /// Succeeds exactly once per proposal — subsequent calls are a no-op (no
 /// double event).
+#[allow(deprecated)]
 pub fn expire_loan_proposal(env: &Env, proposal_id: u32) -> Result<(), Error> {
     util::require_initialized(env)?;
     util::require_not_paused(env)?;
@@ -448,6 +471,7 @@ pub fn expire_loan_proposal(env: &Env, proposal_id: u32) -> Result<(), Error> {
 /// than being trapped (exit is blocked while `has_active_loan` is true), and
 /// lets them request a new loan again after the normal cooldown. Like
 /// `Repaid`, `Defaulted` is terminal — a defaulted loan can't later be repaid.
+#[allow(deprecated)]
 pub fn mark_loan_defaulted(env: &Env, loan_id: u32) -> Result<(), Error> {
     util::require_initialized(env)?;
     util::require_not_paused(env)?;
@@ -471,6 +495,9 @@ pub fn mark_loan_defaulted(env: &Env, loan_id: u32) -> Result<(), Error> {
             .min(member.contribution);
         member.contribution -= penalty;
         member.has_active_loan = false;
+        // Defaulted loans are terminal but were never repaid, so only the
+        // outstanding count changes — `repaid_loans` deliberately stays put.
+        member.active_loans = member.active_loans.saturating_sub(1);
         storage::set_member(env, &member);
         if penalty > 0 {
             storage::set_total_contributions(env, storage::get_total_contributions(env) - penalty);
@@ -497,6 +524,7 @@ pub fn mark_loan_defaulted(env: &Env, loan_id: u32) -> Result<(), Error> {
 /// `pub(crate)` (rather than private) solely so the property tests in
 /// `test.rs` can drive it directly with arbitrary `interest` values instead
 /// of only the ones reachable through a real loan's computed interest.
+#[allow(deprecated)]
 pub(crate) fn distribute_interest(env: &Env, interest: i128) {
     let active = storage::get_active_members(env) as i128;
     if interest <= 0 || active == 0 {

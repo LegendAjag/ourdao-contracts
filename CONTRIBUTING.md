@@ -25,16 +25,12 @@ If you think something should change but there's no issue for it, open one and d
 
 ## Local setup
 
-The repository pins its compiler via `rust-toolchain.toml` (currently **1.94.0**). `rustup` picks this up automatically — just run the commands below and you'll get the right toolchain, formatter, clippy, and the `wasm32v1-none` target without installing anything extra.
+You need a stable Rust toolchain (1.84 or newer — `soroban-sdk` requires the `wasm32v1-none` target, which older toolchains don't have):
 
 ```bash
-# rustup reads rust-toolchain.toml and installs the pinned toolchain.
-rustup show
+rustup target add wasm32v1-none
+rustup component add rustfmt
 ```
-
-The minimum supported version is **1.84** (required by `soroban-sdk` for the `wasm32v1-none` target). The pinned version in `rust-toolchain.toml` is always ≥ that floor.
-
-To bump the toolchain, update the `channel` in `rust-toolchain.toml`, verify all CI checks pass, and open a dedicated PR. See the comments in that file for the full procedure.
 
 Then:
 

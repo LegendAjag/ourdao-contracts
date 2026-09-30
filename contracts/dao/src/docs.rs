@@ -28,6 +28,10 @@ fn proposal_owner(env: &Env, kind: &ProposalKind, id: u32) -> Option<Address> {
     }
 }
 
+// `env.events().publish` is deprecated in soroban-sdk in favour of
+// `#[contractevent]`, but migration is a coordinated, breaking wire-format
+// change (#85).  Suppress per-function so unrelated deprecations still surface.
+#[allow(deprecated)]
 pub fn attach_document(
     env: &Env,
     caller: Address,

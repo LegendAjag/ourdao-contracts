@@ -9,6 +9,10 @@ use crate::error::Error;
 use crate::storage;
 use crate::util;
 
+// `env.events().publish` is deprecated in soroban-sdk in favour of
+// `#[contractevent]`, but migration is a coordinated, breaking wire-format
+// change (#85).  Suppress per-function so unrelated deprecations still surface.
+#[allow(deprecated)]
 pub fn stake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
     util::require_initialized(env)?;
     util::require_not_paused(env)?;
@@ -33,6 +37,7 @@ pub fn stake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
     Ok(())
 }
 
+#[allow(deprecated)]
 pub fn unstake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
     util::require_initialized(env)?;
     util::require_not_paused(env)?;
@@ -60,9 +65,9 @@ pub fn unstake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
     }
 
     let new_stake = current - amount;
+    util::token_client(env).transfer(&util::contract_address(env), &member, &amount);
     storage::set_stake(env, &member, new_stake);
     storage::set_total_staked(env, storage::get_total_staked(env) - amount);
-    util::token_client(env).transfer(&util::contract_address(env), &member, &amount);
     storage::extend_instance(env);
 
     env.events()

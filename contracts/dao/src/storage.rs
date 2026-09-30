@@ -55,6 +55,7 @@ pub enum DataKey {
     NameOf(Address),
     Commit(u32, Address),
     TotalContributions,
+    Delegation(Address),
 }
 
 pub fn extend_instance(env: &Env) {
@@ -400,4 +401,19 @@ pub fn set_yield_remainder(env: &Env, value: i128) {
     env.storage()
         .persistent()
         .set(&DataKey::YieldRemainder, &value);
+}
+
+pub fn get_delegation(env: &Env, member: &Address) -> Option<Address> {
+    let key = DataKey::Delegation(member.clone());
+    let res = env.storage().persistent().get(&key);
+    if res.is_some() {
+        extend_persistent(env, &key);
+    }
+    res
+}
+
+pub fn set_delegation(env: &Env, member: &Address, delegatee: &Address) {
+    let key = DataKey::Delegation(member.clone());
+    env.storage().persistent().set(&key, delegatee);
+    extend_persistent(env, &key);
 }

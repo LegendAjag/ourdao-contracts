@@ -676,3 +676,118 @@ fn edit_loan_proposal_emits_loan_edit_event() {
     let expected = s.client.calculate_loan_terms(&600);
     assert_eq!(after.total_repayment, expected.total_repayment);
 }
+
+// Issue #171: Reject zero-amount loan proposals
+#[test]
+fn zero_amount_loan_request_rejected() {
+    let s = setup(1);
+    let borrower = s.members.get(0).unwrap();
+
+    let err = s.client.try_request_loan(&borrower, &0, &None);
+    assert_eq!(err, Err(Ok(Error::InvalidAmount)));
+
+    let err_neg = s.client.try_request_loan(&borrower, &-100, &None);
+    assert_eq!(err_neg, Err(Ok(Error::InvalidAmount)));
+// ==================== issue #190: member loan stats view ====================
+#[test]
+fn member_loan_stats_track_lifecycle() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 0);
+    assert_eq!(stats.repaid_loans, 0);
+    assert_eq!(stats.active_loans, 0);
+
+    let pid = s.client.request_loan(&borrower, &1_000, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid, &true);
+
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 1);
+    assert_eq!(stats.repaid_loans, 0);
+    assert_eq!(stats.active_loans, 1);
+
+    // Partial repayment leaves the loan outstanding: stats must not move yet.
+    let loan = s.client.get_loan(&pid).unwrap();
+    let outstanding = loan.total_repayment - loan.amount_repaid;
+    s.client
+        .repay_loan_partial(&borrower, &pid, &(outstanding / 2));
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 1);
+    assert_eq!(stats.repaid_loans, 0);
+    assert_eq!(stats.active_loans, 1);
+
+    // Full repayment settles the loan.
+    s.client.repay_loan(&borrower, &pid);
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 1);
+    assert_eq!(stats.repaid_loans, 1);
+    assert_eq!(stats.active_loans, 0);
+
+    // A second loan keeps accumulating on top of the first.
+    let pid2 = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid2, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid2, &true);
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 2);
+    assert_eq!(stats.repaid_loans, 1);
+    assert_eq!(stats.active_loans, 1);
+}
+
+#[test]
+fn member_loan_stats_default_is_not_repaid() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid, &true);
+    advance(&s.env, LOAN_DURATION + 1);
+    s.client.mark_loan_defaulted(&pid);
+
+    let stats = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(stats.total_loans, 1);
+    assert_eq!(stats.repaid_loans, 0);
+    assert_eq!(stats.active_loans, 0);
+}
+
+#[test]
+fn member_loan_stats_preserved_across_rejoin() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid, &true);
+    s.client.repay_loan(&borrower, &pid);
+
+    let before = s.client.get_member_loan_stats(&borrower);
+    assert_eq!(before.total_loans, 1);
+    assert_eq!(before.repaid_loans, 1);
+
+    s.client.exit_dao(&borrower);
+    s.client.register_member(&borrower);
+
+    assert_eq!(s.client.get_member_loan_stats(&borrower), before);
+}
+
+#[test]
+fn member_loan_stats_unknown_member_rejected() {
+    let s = setup(1);
+    let stranger = Address::generate(&s.env);
+    assert_eq!(
+        s.client.try_get_member_loan_stats(&stranger),
+        Err(Ok(Error::NotMember))
+    );
+}

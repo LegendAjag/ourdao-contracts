@@ -8,6 +8,10 @@ use crate::storage::{self, DataKey};
 use crate::types::{NAME_MAX_LEN, NAME_MIN_LEN};
 use crate::util;
 
+// `env.events().publish` is deprecated in soroban-sdk in favour of
+// `#[contractevent]`, but migration is a coordinated, breaking wire-format
+// change (#85).  Suppress per-function so unrelated deprecations still surface.
+#[allow(deprecated)]
 pub fn register_name(env: &Env, owner: Address, name: String) -> Result<(), Error> {
     util::require_initialized(env)?;
     util::require_not_paused(env)?;

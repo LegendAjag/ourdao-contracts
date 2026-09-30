@@ -377,3 +377,16 @@ fn policy_update_cancel_by_admin() {
     let res = s.client.try_execute_policy_update(&s.admin);
     assert_eq!(res, Err(Ok(Error::NoPendingPolicy)));
 }
+
+#[test]
+fn get_version_returns_cargo_pkg_version() {
+    let env = Env::default();
+    let contract_id = env.register(OurDao, ());
+    let client = OurDaoClient::new(&env, &contract_id);
+
+    let version = client.get_version();
+    assert_eq!(version, String::from_str(&env, env!("CARGO_PKG_VERSION")));
+fn test_bump_dao_ttl() {
+    let s = setup(1);
+    s.client.bump_dao_ttl();
+}
