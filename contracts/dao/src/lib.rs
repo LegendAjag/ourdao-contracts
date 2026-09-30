@@ -385,6 +385,14 @@ impl OurDao {
         storage::is_paused(&env)
     }
 
+    /// Returns this contract's semver, read from CARGO_PKG_VERSION at build
+    /// time (#197) — lets off-chain tooling / indexers detect which
+    /// contract build a given deployment is running without relying on the
+    /// WASM hash alone.
+    pub fn get_version(env: Env) -> String {
+        String::from_str(&env, env!("CARGO_PKG_VERSION"))
+    }
+
     pub fn get_stake(env: Env, member: Address) -> i128 {
         storage::get_stake(&env, &member)
     }
