@@ -57,7 +57,7 @@ pub fn attach_document(
             }
         }
     }
-    
+
     storage::set_doc(env, kind, proposal_id, &content_hash);
     env.events()
         .publish((symbol_short!("doc_attn"),), (kind, proposal_id, caller));

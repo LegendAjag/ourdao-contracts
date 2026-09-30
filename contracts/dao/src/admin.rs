@@ -141,11 +141,7 @@ pub fn set_consensus_threshold(env: &Env, caller: Address, threshold: u32) -> Re
     Ok(())
 }
 
-pub fn propose_policy_update(
-    env: &Env,
-    caller: Address,
-    policy: LoanPolicy,
-) -> Result<(), Error> {
+pub fn propose_policy_update(env: &Env, caller: Address, policy: LoanPolicy) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     validate_policy(&policy)?;
     let now = env.ledger().timestamp();

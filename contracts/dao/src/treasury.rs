@@ -25,6 +25,7 @@ pub fn propose_withdrawal(
     }
 
     let id = storage::next_id(env, storage::DataKey::NextTreasuryId);
+    let policy = storage::get_policy(env);
     let proposal = TreasuryProposal {
         id,
         proposer,
@@ -36,8 +37,8 @@ pub fn propose_withdrawal(
         for_votes: 0,
         against_votes: 0,
         votes_cast: 0,
-        voting_period: storage::get_policy(env).voting_period,
-        treasury_threshold: storage::get_policy(env).treasury_threshold,
+        voting_period: policy.voting_period,
+        treasury_threshold: policy.treasury_threshold,
         private,
     };
     storage::set_treasury_proposal(env, &proposal);
@@ -157,17 +158,16 @@ fn execute(env: &Env, proposal: &mut TreasuryProposal) -> Result<(), Error> {
     Ok(())
 }
 
-
 pub fn expire_treasury_proposal(env: &Env, proposal_id: u32) -> Result<(), Error> {
     util::require_initialized(env)?;
     util::require_not_paused(env)?;
-    let mut proposal = storage::get_treasury_proposal(env, proposal_id)
-        .ok_or(Error::TreasuryProposalNotFound)?;
-    
+    let mut proposal =
+        storage::get_treasury_proposal(env, proposal_id).ok_or(Error::TreasuryProposalNotFound)?;
+
     if proposal.status != ProposalStatus::Pending {
         return Err(Error::NotInVotingPhase); // Re-using error
     }
-    
+
     if env.ledger().timestamp() > proposal.created_at + proposal.voting_period {
         proposal.status = ProposalStatus::Expired;
         storage::set_treasury_proposal(env, &proposal);

@@ -1,6 +1,6 @@
 extern crate std;
 
-use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
+use soroban_sdk::testutils::{Address as _, Events as _};
 use soroban_sdk::xdr::{ContractEventBody, ScVal};
 use soroban_sdk::{Address, String};
 
@@ -538,7 +538,8 @@ fn loan_proposal_quorum_higher_threshold_requires_more_votes() {
     let mut high_quorum_policy = policy();
     high_quorum_policy.quorum_bps = 10_000; // 100% => all 4 votes required
 
-    s.client.propose_policy_update(&s.admin, &high_quorum_policy);
+    s.client
+        .propose_policy_update(&s.admin, &high_quorum_policy);
     advance(&s.env, TIMELOCK_DURATION + 1);
     s.client.execute_policy_update(&s.admin);
 
@@ -606,7 +607,9 @@ fn proposal_creation_with_and_without_cid() {
 
     // 2. With valid CID (IPFS CIDv0: 46 chars)
     let cid_str = String::from_str(&s.env, "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco");
-    let pid_some = s.client.request_loan(&borrower, &500, &Some(cid_str.clone()));
+    let pid_some = s
+        .client
+        .request_loan(&borrower, &500, &Some(cid_str.clone()));
     let prop_some = s.client.get_loan_proposal(&pid_some).unwrap();
     assert_eq!(prop_some.metadata_cid, Some(cid_str));
 
@@ -615,7 +618,9 @@ fn proposal_creation_with_and_without_cid() {
         &s.env,
         "bafybeicg2abbmanlpdgahgah744vyqeifqgndq7x2pzg7kmd3p7w4h2bfe",
     );
-    let pid_v1 = s.client.request_loan(&borrower, &500, &Some(cid_v1.clone()));
+    let pid_v1 = s
+        .client
+        .request_loan(&borrower, &500, &Some(cid_v1.clone()));
     let prop_v1 = s.client.get_loan_proposal(&pid_v1).unwrap();
     assert_eq!(prop_v1.metadata_cid, Some(cid_v1));
 }

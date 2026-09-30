@@ -47,7 +47,7 @@ pub fn register_member(env: &Env, member: Address) -> Result<(), Error> {
 
     // Interaction last (checks-effects-interactions): the fee transfer only
     // happens once every state transition above has completed.
-    util::token_client(env).transfer(&member, &util::contract_address(env), &fee);
+    util::token_client(env).transfer(&member, util::contract_address(env), &fee);
 
     env.events()
         .publish((symbol_short!("joined"),), (member, fee));

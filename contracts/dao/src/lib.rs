@@ -207,10 +207,7 @@ impl OurDao {
         treasury::expire_treasury_proposal(&env, proposal_id)
     }
 
-    pub fn execute_treasury_proposal(
-        env: Env,
-        proposal_id: u32,
-    ) -> Result<(), Error> {
+    pub fn execute_treasury_proposal(env: Env, proposal_id: u32) -> Result<(), Error> {
         treasury::execute_approved(&env, proposal_id)
     }
 

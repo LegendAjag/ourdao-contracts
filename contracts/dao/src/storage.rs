@@ -119,9 +119,7 @@ pub fn set_policy(env: &Env, policy: &LoanPolicy) {
 }
 
 pub fn get_pending_policy_update(env: &Env) -> Option<PendingPolicyUpdate> {
-    env.storage()
-        .instance()
-        .get(&DataKey::PendingPolicyUpdate)
+    env.storage().instance().get(&DataKey::PendingPolicyUpdate)
 }
 
 pub fn set_pending_policy_update(env: &Env, update: &PendingPolicyUpdate) {
@@ -390,7 +388,6 @@ pub fn remove_commit(env: &Env, id: u32, voter: &Address) {
         .persistent()
         .remove(&DataKey::Commit(id, voter.clone()));
 }
-
 
 pub fn get_yield_remainder(env: &Env) -> i128 {
     env.storage()
