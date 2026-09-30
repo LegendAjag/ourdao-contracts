@@ -53,6 +53,22 @@ pub struct Member {
     pub share_balance: i128,
     pub has_active_loan: bool,
     pub last_loan_time: u64,
+    /// Lifetime count of loans disbursed to this member.
+    pub total_loans: u32,
+    /// Lifetime count of this member's loans that reached full repayment.
+    pub repaid_loans: u32,
+    /// Loans currently outstanding (disbursed and not yet repaid or defaulted).
+    pub active_loans: u32,
+}
+
+/// On-chain credit track record for a member. Returned by
+/// `get_member_loan_stats` as an O(1) read of the member record.
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MemberLoanStats {
+    pub total_loans: u32,
+    pub repaid_loans: u32,
+    pub active_loans: u32,
 }
 
 /// Tunable lending parameters. Durations are in ledger seconds; rates in bps.
@@ -170,4 +186,11 @@ pub struct StakingRewardClaimed {
     pub member: Address,
     pub amount: i128,
     pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProposalVote {
+    pub proposal_id: u32,
+    pub vote: bool,
 }

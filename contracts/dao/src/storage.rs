@@ -55,6 +55,7 @@ pub enum DataKey {
     NameOf(Address),
     Commit(u32, Address),
     TotalContributions,
+    Delegation(Address),
 }
 
 pub fn extend_instance(env: &Env) {
@@ -81,6 +82,18 @@ pub fn get_admins(env: &Env) -> Vec<Address> {
 
 pub fn set_admins(env: &Env, admins: &Vec<Address>) {
     env.storage().instance().set(&DataKey::Admins, admins);
+}
+
+pub fn get_pauser(env: &Env) -> Option<Address> {
+    env.storage().instance().get(&DataKey::Pauser)
+}
+
+pub fn set_pauser(env: &Env, pauser: &Address) {
+    env.storage().instance().set(&DataKey::Pauser, pauser);
+}
+
+pub fn remove_pauser(env: &Env) {
+    env.storage().instance().remove(&DataKey::Pauser);
 }
 
 pub fn get_threshold(env: &Env) -> u32 {
@@ -119,9 +132,7 @@ pub fn set_policy(env: &Env, policy: &LoanPolicy) {
 }
 
 pub fn get_pending_policy_update(env: &Env) -> Option<PendingPolicyUpdate> {
-    env.storage()
-        .instance()
-        .get(&DataKey::PendingPolicyUpdate)
+    env.storage().instance().get(&DataKey::PendingPolicyUpdate)
 }
 
 pub fn set_pending_policy_update(env: &Env, update: &PendingPolicyUpdate) {
@@ -391,7 +402,6 @@ pub fn remove_commit(env: &Env, id: u32, voter: &Address) {
         .remove(&DataKey::Commit(id, voter.clone()));
 }
 
-
 pub fn get_yield_remainder(env: &Env) -> i128 {
     env.storage()
         .persistent()
@@ -403,4 +413,19 @@ pub fn set_yield_remainder(env: &Env, value: i128) {
     env.storage()
         .persistent()
         .set(&DataKey::YieldRemainder, &value);
+}
+
+pub fn get_delegation(env: &Env, member: &Address) -> Option<Address> {
+    let key = DataKey::Delegation(member.clone());
+    let res = env.storage().persistent().get(&key);
+    if res.is_some() {
+        extend_persistent(env, &key);
+    }
+    res
+}
+
+pub fn set_delegation(env: &Env, member: &Address, delegatee: &Address) {
+    let key = DataKey::Delegation(member.clone());
+    env.storage().persistent().set(&key, delegatee);
+    extend_persistent(env, &key);
 }
