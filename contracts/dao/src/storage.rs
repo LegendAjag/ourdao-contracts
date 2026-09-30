@@ -84,6 +84,18 @@ pub fn set_admins(env: &Env, admins: &Vec<Address>) {
     env.storage().instance().set(&DataKey::Admins, admins);
 }
 
+pub fn get_pauser(env: &Env) -> Option<Address> {
+    env.storage().instance().get(&DataKey::Pauser)
+}
+
+pub fn set_pauser(env: &Env, pauser: &Address) {
+    env.storage().instance().set(&DataKey::Pauser, pauser);
+}
+
+pub fn remove_pauser(env: &Env) {
+    env.storage().instance().remove(&DataKey::Pauser);
+}
+
 pub fn get_threshold(env: &Env) -> u32 {
     env.storage().instance().get(&DataKey::Threshold).unwrap()
 }
