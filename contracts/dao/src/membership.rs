@@ -2,7 +2,7 @@ use soroban_sdk::{symbol_short, Address, Env};
 
 use crate::error::Error;
 use crate::storage::{self, extend_instance};
-use crate::types::{Member, MemberStatus};
+use crate::types::{Member, MemberStatus, StakingRewardClaimed};
 use crate::util;
 
 pub fn register_member(env: &Env, member: Address) -> Result<(), Error> {
@@ -101,8 +101,15 @@ pub fn claim_rewards(env: &Env, member: Address) -> Result<i128, Error> {
     let acc = storage::get_yield_accumulator(env);
     storage::set_yield_snapshot(env, &member, acc);
     util::token_client(env).transfer(&util::contract_address(env), &member, &pending);
-    env.events()
-        .publish((symbol_short!("claimed"),), (member, pending));
+    let now = env.ledger().timestamp();
+    env.events().publish(
+        (symbol_short!("claimed"), member.clone(), pending),
+        StakingRewardClaimed {
+            member,
+            amount: pending,
+            timestamp: now,
+        },
+    );
     Ok(pending)
 }
 

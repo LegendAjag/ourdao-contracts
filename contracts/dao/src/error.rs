@@ -67,4 +67,10 @@ pub enum Error {
     /// The token passed to `initialize` is not a contract implementing the
     /// token interface (#115).
     InvalidToken = 75,
+    /// Timelock delay has not expired yet (#192).
+    TimelockNotExpired = 76,
+    /// No policy update is currently pending (#192).
+    NoPendingPolicy = 77,
+    /// Proposal metadata CID is invalid (#194).
+    InvalidMetadataCid = 78,
 }

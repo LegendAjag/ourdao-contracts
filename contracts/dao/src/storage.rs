@@ -1,6 +1,6 @@
 use soroban_sdk::{contracttype, Address, BytesN, Env, String, Vec};
 
-use crate::types::{Loan, LoanPolicy, LoanProposal, Member, TreasuryProposal};
+use crate::types::{Loan, LoanPolicy, LoanProposal, Member, PendingPolicyUpdate, TreasuryProposal};
 
 // Soroban produces one ledger every ~5 seconds.
 const DAY_IN_LEDGERS: u32 = 17_280;
@@ -33,6 +33,7 @@ pub enum DataKey {
     NextProposalId,
     NextTreasuryId,
     TotalStaked,
+    PendingPolicyUpdate,
 
     // ---- per-entity (persistent storage) ----
     Member(Address),
@@ -115,6 +116,24 @@ pub fn get_policy(env: &Env) -> LoanPolicy {
 
 pub fn set_policy(env: &Env, policy: &LoanPolicy) {
     env.storage().instance().set(&DataKey::Policy, policy);
+}
+
+pub fn get_pending_policy_update(env: &Env) -> Option<PendingPolicyUpdate> {
+    env.storage()
+        .instance()
+        .get(&DataKey::PendingPolicyUpdate)
+}
+
+pub fn set_pending_policy_update(env: &Env, update: &PendingPolicyUpdate) {
+    env.storage()
+        .instance()
+        .set(&DataKey::PendingPolicyUpdate, update);
+}
+
+pub fn remove_pending_policy_update(env: &Env) {
+    env.storage()
+        .instance()
+        .remove(&DataKey::PendingPolicyUpdate);
 }
 
 pub fn is_paused(env: &Env) -> bool {

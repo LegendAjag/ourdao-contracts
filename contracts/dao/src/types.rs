@@ -73,6 +73,7 @@ pub struct LoanPolicy {
     pub editing_period: u64,
     pub voting_period: u64,
     pub treasury_threshold: u32,
+    pub quorum_bps: u32,
 }
 
 #[contracttype]
@@ -92,6 +93,7 @@ pub struct LoanProposal {
     pub against_votes: i128,
     pub votes_cast: u32,
     pub voting_period: u64,
+    pub metadata_cid: Option<String>,
 }
 
 #[contracttype]
@@ -134,4 +136,22 @@ pub struct LoanTerms {
     pub interest_rate: u32,
     pub total_repayment: i128,
     pub duration: u64,
+}
+
+/// Pending policy update undergoing timelock delay (#192).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingPolicyUpdate {
+    pub policy: LoanPolicy,
+    pub proposed_at: u64,
+    pub execution_time: u64,
+}
+
+/// Structured event emitted upon staking reward claim (#193).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StakingRewardClaimed {
+    pub member: Address,
+    pub amount: i128,
+    pub timestamp: u64,
 }

@@ -1,11 +1,15 @@
 #![cfg(test)]
 
+extern crate std;
+use std::println;
+
 use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
 use soroban_sdk::xdr::{ContractEventBody, ScVal};
 use soroban_sdk::{token, Address, Bytes, BytesN, Env, String, Vec};
 
 use crate::privacy::compute_commitment;
 use crate::storage::ProposalKind;
+use crate::admin::TIMELOCK_DURATION;
 use crate::types::{LoanPolicy, LoanStatus, MemberStatus, ProposalPhase, ProposalStatus};
 use crate::{Error, OurDao, OurDaoClient};
 
@@ -132,6 +136,7 @@ fn policy() -> LoanPolicy {
         editing_period: EDITING,
         voting_period: VOTING_PERIOD,
         treasury_threshold: 5_100, // 51%
+        quorum_bps: 0,
     }
 }
 
@@ -222,7 +227,7 @@ fn full_loan_lifecycle() {
     let terms = s.client.calculate_loan_terms(&1_000);
     assert!(terms.interest_rate >= 500 && terms.interest_rate <= 2_000);
 
-    let pid = s.client.request_loan(&borrower, &1_000);
+    let pid = s.client.request_loan(&borrower, &1_000, &None);
     let prop = s.client.get_loan_proposal(&pid).unwrap();
     assert_eq!(prop.total_repayment, terms.total_repayment);
 
@@ -271,21 +276,21 @@ fn loan_rejected_when_ineligible_active_loan() {
     let v1 = s.members.get(1).unwrap();
     let v2 = s.members.get(2).unwrap();
 
-    let pid = s.client.request_loan(&borrower, &500);
+    let pid = s.client.request_loan(&borrower, &500, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&v1, &pid, &true);
     s.client.vote_on_loan_proposal(&v2, &pid, &true);
 
     // Borrower now has an active loan; a second request must fail.
-    let res = s.client.try_request_loan(&borrower, &200);
-    assert_eq!(res, Err(Ok(Error::NotEligibleForLoan)));
+    let res = s.client.try_request_loan(&borrower, &200, &None);
+    assert_eq!(res, Err(Ok(Error::HasActiveLoan)));
 }
 
 #[test]
 fn loan_exceeds_treasury_ratio() {
     let s = setup(3); // treasury = 3000, max ratio 50% => max loan 1500
     let borrower = s.members.get(0).unwrap();
-    let res = s.client.try_request_loan(&borrower, &2_000);
+    let res = s.client.try_request_loan(&borrower, &2_000, &None);
     assert_eq!(res, Err(Ok(Error::ExceedsTreasuryRatio)));
 }
 
@@ -296,7 +301,7 @@ fn loan_default_before_due_rejected() {
     let v1 = s.members.get(1).unwrap();
     let v2 = s.members.get(2).unwrap();
 
-    let pid = s.client.request_loan(&borrower, &500);
+    let pid = s.client.request_loan(&borrower, &500, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&v1, &pid, &true);
     s.client.vote_on_loan_proposal(&v2, &pid, &true);
@@ -317,7 +322,7 @@ fn loan_default_applies_penalty_and_frees_borrower() {
     let v1 = s.members.get(1).unwrap();
     let v2 = s.members.get(2).unwrap();
 
-    let pid = s.client.request_loan(&borrower, &500);
+    let pid = s.client.request_loan(&borrower, &500, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&v1, &pid, &true);
     s.client.vote_on_loan_proposal(&v2, &pid, &true);
@@ -344,7 +349,7 @@ fn defaulted_loan_is_terminal() {
     let v1 = s.members.get(1).unwrap();
     let v2 = s.members.get(2).unwrap();
 
-    let pid = s.client.request_loan(&borrower, &500);
+    let pid = s.client.request_loan(&borrower, &500, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&v1, &pid, &true);
     s.client.vote_on_loan_proposal(&v2, &pid, &true);
@@ -367,7 +372,7 @@ fn defaulted_borrower_can_exit() {
     let v1 = s.members.get(1).unwrap();
     let v2 = s.members.get(2).unwrap();
 
-    let pid = s.client.request_loan(&borrower, &500);
+    let pid = s.client.request_loan(&borrower, &500, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&v1, &pid, &true);
     s.client.vote_on_loan_proposal(&v2, &pid, &true);
@@ -395,7 +400,7 @@ fn loan_id_matches_its_originating_proposal_id() {
     // First proposal (id 0) never reaches approval — consumes a proposal id
     // without ever producing a loan, so a separate loan-id counter would lag
     // behind the proposal-id counter from here on.
-    let pid0 = s.client.request_loan(&borrower, &200);
+    let pid0 = s.client.request_loan(&borrower, &200, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&v1, &pid0, &false);
     assert_eq!(
@@ -405,7 +410,7 @@ fn loan_id_matches_its_originating_proposal_id() {
 
     // Second proposal (id 1) is approved. Its loan must carry id 1 too, not
     // whatever a separate counter would have handed out (0).
-    let pid1 = s.client.request_loan(&borrower, &300);
+    let pid1 = s.client.request_loan(&borrower, &300, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&v1, &pid1, &true);
     s.client.vote_on_loan_proposal(&v2, &pid1, &true);
@@ -449,7 +454,7 @@ fn staking_boosts_voting_weight() {
     s.client.stake(&staker, &200);
     assert_eq!(s.client.get_stake(&staker), 200);
 
-    let pid = s.client.request_loan(&borrower, &500);
+    let pid = s.client.request_loan(&borrower, &500, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&staker, &pid, &true);
 
@@ -594,7 +599,7 @@ fn initialize_rejects_duplicate_admins() {
 fn content_hash_document() {
     let s = setup(1);
     let member = s.members.get(0).unwrap();
-    let pid = s.client.request_loan(&member, &500);
+    let pid = s.client.request_loan(&member, &500, &None);
 
     let cid = Bytes::from_array(&s.env, b"QmExampleCid1234567890");
     s.client
@@ -623,7 +628,7 @@ fn pause_blocks_all_mutating_entrypoints() {
     let newcomer = Address::generate(&s.env);
 
     // Set up some proposals to vote on / interact with
-    let loan_pid = s.client.request_loan(&borrower, &500);
+    let loan_pid = s.client.request_loan(&borrower, &500, &None);
     advance(&s.env, EDITING + 1);
 
     let treasury_pid = s.client.propose_treasury_withdrawal(
@@ -649,7 +654,7 @@ fn pause_blocks_all_mutating_entrypoints() {
     assert_eq!(res, Err(Ok(Error::Paused)), "claim_rewards should be pause-gated");
 
     // ==================== Loans ====================
-    let res = s.client.try_request_loan(&borrower, &1000);
+    let res = s.client.try_request_loan(&borrower, &1000, &None);
     assert_eq!(res, Err(Ok(Error::Paused)), "request_loan should be pause-gated");
 
     let res = s.client.try_edit_loan_proposal(&borrower, &loan_pid, &600);
@@ -746,7 +751,7 @@ fn cannot_remove_last_admin() {
 fn expired_proposal_shows_expired_phase_in_view() {
     let s = setup(3);
     let borrower = s.members.get(0).unwrap();
-    let pid = s.client.request_loan(&borrower, &500);
+    let pid = s.client.request_loan(&borrower, &500, &None);
 
     // Before voting window expires, view returns the live phase.
     let prop = s.client.get_loan_proposal(&pid).unwrap();
@@ -767,7 +772,7 @@ fn expired_proposal_shows_expired_phase_in_view() {
 fn expire_before_deadline_rejected() {
     let s = setup(3);
     let borrower = s.members.get(0).unwrap();
-    let pid = s.client.request_loan(&borrower, &500);
+    let pid = s.client.request_loan(&borrower, &500, &None);
 
     // Proposal is still in editing phase — not expired yet.
     let res = s.client.try_expire_loan_proposal(&pid);
@@ -778,7 +783,7 @@ fn expire_before_deadline_rejected() {
 fn double_expire_is_noop() {
     let s = setup(3);
     let borrower = s.members.get(0).unwrap();
-    let pid = s.client.request_loan(&borrower, &500);
+    let pid = s.client.request_loan(&borrower, &500, &None);
 
     advance(&s.env, EDITING + VOTING_PERIOD + 2);
 
@@ -800,7 +805,7 @@ fn has_voted_loan_before_and_after() {
     let s = setup(3);
     let borrower = s.members.get(0).unwrap();
     let v1 = s.members.get(1).unwrap();
-    let pid = s.client.request_loan(&borrower, &500);
+    let pid = s.client.request_loan(&borrower, &500, &None);
     advance(&s.env, EDITING + 1);
 
     assert!(!s.client.has_voted(&ProposalKind::Loan, &pid, &v1));
@@ -915,7 +920,7 @@ fn yield_accumulator_join_claim_exit_rejoin() {
     let v2 = s.members.get(2).unwrap();
 
     // Get a loan approved and repaid so interest is distributed.
-    let pid = s.client.request_loan(&borrower, &1_000);
+    let pid = s.client.request_loan(&borrower, &1_000, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&v1, &pid, &true);
     s.client.vote_on_loan_proposal(&v2, &pid, &true);
@@ -950,7 +955,7 @@ fn partial_repayment_then_full() {
     let v1 = s.members.get(1).unwrap();
     let v2 = s.members.get(2).unwrap();
 
-    let pid = s.client.request_loan(&borrower, &1_000);
+    let pid = s.client.request_loan(&borrower, &1_000, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&v1, &pid, &true);
     s.client.vote_on_loan_proposal(&v2, &pid, &true);
@@ -991,7 +996,7 @@ fn partial_repayment_overpay_rejected() {
     let v1 = s.members.get(1).unwrap();
     let v2 = s.members.get(2).unwrap();
 
-    let pid = s.client.request_loan(&borrower, &500);
+    let pid = s.client.request_loan(&borrower, &500, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&v1, &pid, &true);
     s.client.vote_on_loan_proposal(&v2, &pid, &true);
@@ -1023,7 +1028,7 @@ fn partial_repayments_sum_to_exact_total_marks_repaid() {
     let v1 = s.members.get(1).unwrap();
     let v2 = s.members.get(2).unwrap();
 
-    let pid = s.client.request_loan(&borrower, &1_000);
+    let pid = s.client.request_loan(&borrower, &1_000, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&v1, &pid, &true);
     s.client.vote_on_loan_proposal(&v2, &pid, &true);
@@ -1052,7 +1057,7 @@ fn partial_payment_overdue_loan_still_defaultable() {
     let v1 = s.members.get(1).unwrap();
     let v2 = s.members.get(2).unwrap();
 
-    let pid = s.client.request_loan(&borrower, &500);
+    let pid = s.client.request_loan(&borrower, &500, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&v1, &pid, &true);
     s.client.vote_on_loan_proposal(&v2, &pid, &true);
@@ -1086,7 +1091,7 @@ fn exit_blocked_while_partial_balance_remains() {
     let v1 = s.members.get(1).unwrap();
     let v2 = s.members.get(2).unwrap();
 
-    let pid = s.client.request_loan(&borrower, &500);
+    let pid = s.client.request_loan(&borrower, &500, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&v1, &pid, &true);
     s.client.vote_on_loan_proposal(&v2, &pid, &true);
@@ -1147,7 +1152,7 @@ fn mixed_joins_exits_defaults_never_strand_value() {
     let b = s.members.get(1).unwrap();
     let c = s.members.get(2).unwrap();
 
-    let pid = s.client.request_loan(&a, &500);
+    let pid = s.client.request_loan(&a, &500, &None);
     advance(&s.env, EDITING + 1);
     s.client.vote_on_loan_proposal(&b, &pid, &true);
     s.client.vote_on_loan_proposal(&c, &pid, &true);
@@ -1412,7 +1417,7 @@ fn approved_but_unfundable_loan_waits_then_disburses_after_refill() {
     let v3 = s.members.get(3).unwrap();
 
     // Request passes the pre-vote ratio check against the full treasury...
-    let pid = s.client.request_loan(&borrower, &1_500);
+    let pid = s.client.request_loan(&borrower, &1_500, &None);
 
     // ...then the treasury is drained by a passed withdrawal before the loan vote closes.
     let dest = Address::generate(&s.env);
@@ -1546,6 +1551,84 @@ fn initialize_accepts_a_real_token() {
     assert_eq!(init_with_token(&env, &sac.address()), Ok(()));
 }
 
+// ===========================================================================
+// Issue #191: Configurable quorum threshold parameter in LoanPolicy
+// ===========================================================================
+
+#[test]
+fn validate_policy_rejects_quorum_bps_above_basis_points() {
+    let mut p = policy();
+    p.quorum_bps = 10_001; // > 10_000 BASIS_POINTS
+    let s = setup(1);
+    let res = s.client.try_propose_policy_update(&s.admin, &p);
+    assert_eq!(res, Err(Ok(Error::InvalidLoanPolicy)));
+}
+
+#[test]
+fn loan_proposal_uses_dynamic_quorum_threshold() {
+    // 4 members. Threshold set to 5100 (needs 3 votes normally).
+    // If policy has quorum_bps = 2500 (needs ceil(4 * 25%) = 1 vote), 1 vote is enough to approve!
+    let s = setup(4);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+
+    let mut low_quorum_policy = policy();
+    low_quorum_policy.quorum_bps = 2_500; // 25% => 1 vote required for 4 members
+
+    // Propose and execute policy update after timelock
+    s.client.propose_policy_update(&s.admin, &low_quorum_policy);
+    advance(&s.env, TIMELOCK_DURATION + 1);
+    s.client.execute_policy_update(&s.admin);
+    assert_eq!(s.client.get_loan_policy().quorum_bps, 2_500);
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + 1);
+
+    // Single vote is enough with 25% quorum!
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    let prop = s.client.get_loan_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Approved);
+}
+
+#[test]
+fn loan_proposal_quorum_higher_threshold_requires_more_votes() {
+    // 4 members. Threshold set to 5100 (3 votes).
+    // If policy has quorum_bps = 10_000 (needs ceil(4 * 100%) = 4 votes).
+    let s = setup(4);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+    let v3 = s.members.get(3).unwrap();
+
+    let mut high_quorum_policy = policy();
+    high_quorum_policy.quorum_bps = 10_000; // 100% => all 4 votes required
+
+    s.client.propose_policy_update(&s.admin, &high_quorum_policy);
+    advance(&s.env, TIMELOCK_DURATION + 1);
+    s.client.execute_policy_update(&s.admin);
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + 1);
+
+    // 2 votes was enough with 51% (for 3 members), but for 4 members with 100% quorum, 2 votes is still pending.
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid, &true);
+    assert_eq!(
+        s.client.get_loan_proposal(&pid).unwrap().status,
+        ProposalStatus::Pending
+    );
+
+    s.client.vote_on_loan_proposal(&v3, &pid, &true);
+    assert_eq!(
+        s.client.get_loan_proposal(&pid).unwrap().status,
+        ProposalStatus::Pending
+    );
+
+    // Borrower votes yes (4th vote) => 4/4 approved!
+    s.client.vote_on_loan_proposal(&borrower, &pid, &true);
+    assert_eq!(
+        s.client.get_loan_proposal(&pid).unwrap().status,
+        ProposalStatus::Approved
 #[test]
 fn rejected_register_member_transfer_rolls_back_all_membership_state() {
     let s = rejecting_setup(0);
@@ -1592,6 +1675,220 @@ fn rejected_stake_transfer_leaves_stake_storage_unchanged() {
 }
 
 #[test]
+fn loan_proposal_backwards_compatible_with_zero_quorum_bps() {
+    // With quorum_bps == 0, it falls back to global consensus_threshold
+    let s = setup(3); // 51% of 3 members is 2 votes
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+
+    assert_eq!(s.client.get_loan_policy().quorum_bps, 0);
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + 1);
+
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    assert_eq!(
+        s.client.get_loan_proposal(&pid).unwrap().status,
+        ProposalStatus::Pending
+    );
+
+    s.client.vote_on_loan_proposal(&v2, &pid, &true);
+    assert_eq!(
+        s.client.get_loan_proposal(&pid).unwrap().status,
+        ProposalStatus::Approved
+    );
+}
+
+// ===========================================================================
+// Issue #192: Timelock delay for administrative policy changes
+// ===========================================================================
+
+#[test]
+fn policy_update_timelock_enforced() {
+    let s = setup(3);
+    let non_admin = s.members.get(0).unwrap();
+
+    let mut new_p = policy();
+    new_p.max_loan_duration = 60 * 24 * 60 * 60; // change duration
+
+    // Non-admin cannot propose policy update
+    let err = s.client.try_propose_policy_update(&non_admin, &new_p);
+    assert_eq!(err, Err(Ok(Error::NotAdmin)));
+
+    // Admin proposes update
+    s.client.propose_policy_update(&s.admin, &new_p);
+
+    let pending = s.client.get_pending_policy_update().unwrap();
+    assert_eq!(pending.policy.max_loan_duration, 60 * 24 * 60 * 60);
+    assert_eq!(pending.execution_time, pending.proposed_at + TIMELOCK_DURATION);
+
+    // Attempting to execute immediately fails with TimelockNotExpired
+    let early = s.client.try_execute_policy_update(&s.admin);
+    assert_eq!(early, Err(Ok(Error::TimelockNotExpired)));
+
+    // Advance 47 hours (not yet 48 hours)
+    advance(&s.env, TIMELOCK_DURATION - 3600);
+    let early2 = s.client.try_execute_policy_update(&s.admin);
+    assert_eq!(early2, Err(Ok(Error::TimelockNotExpired)));
+
+    // Non-admin cannot execute even after timelock
+    advance(&s.env, 3601);
+    let non_admin_exec = s.client.try_execute_policy_update(&non_admin);
+    assert_eq!(non_admin_exec, Err(Ok(Error::NotAdmin)));
+
+    // Admin executes after timelock delay
+    s.client.execute_policy_update(&s.admin);
+
+    // Policy is updated, pending update is cleared
+    assert_eq!(
+        s.client.get_loan_policy().max_loan_duration,
+        60 * 24 * 60 * 60
+    );
+    assert!(s.client.get_pending_policy_update().is_none());
+
+    // Subsequent execute fails because nothing is pending
+    let none_pending = s.client.try_execute_policy_update(&s.admin);
+    assert_eq!(none_pending, Err(Ok(Error::NoPendingPolicy)));
+}
+
+#[test]
+fn policy_update_cancel_by_admin() {
+    let s = setup(3);
+    let non_admin = s.members.get(0).unwrap();
+
+    let mut new_p = policy();
+    new_p.min_interest_rate = 1_000;
+
+    s.client.propose_policy_update(&s.admin, &new_p);
+    assert!(s.client.get_pending_policy_update().is_some());
+
+    // Non-admin cannot cancel
+    let err = s.client.try_cancel_policy_update(&non_admin);
+    assert_eq!(err, Err(Ok(Error::NotAdmin)));
+
+    // Admin cancels
+    s.client.cancel_policy_update(&s.admin);
+    assert!(s.client.get_pending_policy_update().is_none());
+
+    // Even after 48h, execute fails because it was cancelled
+    advance(&s.env, TIMELOCK_DURATION + 1);
+    let res = s.client.try_execute_policy_update(&s.admin);
+    assert_eq!(res, Err(Ok(Error::NoPendingPolicy)));
+}
+
+// ===========================================================================
+// Issue #193: StakingRewardClaimed event on yield distribution
+// ===========================================================================
+
+#[test]
+fn claim_rewards_emits_staking_reward_claimed_event_and_updates_snapshot() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+
+    let pid = s.client.request_loan(&borrower, &1_000, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid, &true);
+    s.client.repay_loan(&borrower, &0);
+
+    let loan = s.client.get_loan(&0).unwrap();
+    let interest = loan.total_repayment - loan.principal;
+    let expected_share = interest / 3;
+    assert!(expected_share > 0);
+
+    assert_eq!(s.client.get_pending_yield(&v1), expected_share);
+
+    // Claim rewards
+    let claimed = s.client.claim_rewards(&v1);
+    assert_eq!(claimed, expected_share);
+
+    // Verify event payload and topics
+    assert!(emitted(&s.env, "claimed"));
+
+    // Find the claimed event in event log
+    let all_events = s.env.events().all();
+    let events_vec = all_events.events();
+    let event = events_vec
+        .iter()
+        .rev()
+        .find(|e| {
+            let ContractEventBody::V0(body) = &e.body;
+            matches!(body.topics.first(), Some(ScVal::Symbol(sym)) if sym.0.to_utf8_string_lossy() == "claimed")
+        })
+        .expect("claimed event not found");
+
+    let ContractEventBody::V0(body) = &event.body;
+    assert_eq!(body.topics.len(), 3);
+    // Topic 0: symbol "claimed"
+    match &body.topics[0] {
+        ScVal::Symbol(sym) => assert_eq!(sym.0.to_utf8_string_lossy(), "claimed"),
+        _ => panic!("unexpected topic 0"),
+    }
+    // Verify topic 2 has the claimed amount
+    match &body.topics[2] {
+        ScVal::I128(amount) => {
+            let val = ((amount.hi as i128) << 64) | (amount.lo as i128);
+            assert_eq!(val, expected_share);
+        }
+        _ => panic!("unexpected topic 2"),
+    }
+
+    // Verify accumulator snapshot updated on member record
+    assert_eq!(s.client.get_pending_yield(&v1), 0);
+    assert_eq!(s.client.try_claim_rewards(&v1), Err(Ok(Error::NothingToClaim)));
+}
+
+// ===========================================================================
+// Issue #194: Custom metadata CID attachment to loan proposals
+// ===========================================================================
+
+#[test]
+fn proposal_creation_with_and_without_cid() {
+    let s = setup(2);
+    let borrower = s.members.get(0).unwrap();
+
+    // 1. Without CID
+    let pid_none = s.client.request_loan(&borrower, &500, &None);
+    let prop_none = s.client.get_loan_proposal(&pid_none).unwrap();
+    assert_eq!(prop_none.metadata_cid, None);
+
+    // 2. With valid CID (IPFS CIDv0: 46 chars)
+    let cid_str = String::from_str(&s.env, "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco");
+    let pid_some = s.client.request_loan(&borrower, &500, &Some(cid_str.clone()));
+    let prop_some = s.client.get_loan_proposal(&pid_some).unwrap();
+    assert_eq!(prop_some.metadata_cid, Some(cid_str));
+
+    // 3. With valid CIDv1 (59 chars)
+    let cid_v1 = String::from_str(
+        &s.env,
+        "bafybeicg2abbmanlpdgahgah744vyqeifqgndq7x2pzg7kmd3p7w4h2bfe",
+    );
+    let pid_v1 = s.client.request_loan(&borrower, &500, &Some(cid_v1.clone()));
+    let prop_v1 = s.client.get_loan_proposal(&pid_v1).unwrap();
+    assert_eq!(prop_v1.metadata_cid, Some(cid_v1));
+}
+
+#[test]
+fn proposal_creation_rejects_invalid_cid() {
+    let s = setup(2);
+    let borrower = s.members.get(0).unwrap();
+
+    // Empty CID string
+    let empty_cid = String::from_str(&s.env, "");
+    let err_empty = s.client.try_request_loan(&borrower, &500, &Some(empty_cid));
+    assert_eq!(err_empty, Err(Ok(Error::InvalidMetadataCid)));
+
+    // Too long CID (> 64 chars)
+    let long_cid = String::from_str(
+        &s.env,
+        "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6ucoExtraLongContentHashExceeding64Characters",
+    );
+    let err_long = s.client.try_request_loan(&borrower, &500, &Some(long_cid));
+    assert_eq!(err_long, Err(Ok(Error::DocumentTooLarge)));
+}
 fn rejected_treasury_transfer_rolls_back_approval_vote_and_execution_state() {
     let s = rejecting_setup(3);
     let proposer = s.members.get(0).unwrap();

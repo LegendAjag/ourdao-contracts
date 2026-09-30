@@ -2,8 +2,11 @@ use soroban_sdk::{symbol_short, token, Address, Env, Vec};
 
 use crate::error::Error;
 use crate::storage::{self, extend_instance};
-use crate::types::{LoanPolicy, BASIS_POINTS};
+use crate::types::{LoanPolicy, PendingPolicyUpdate, BASIS_POINTS};
 use crate::util;
+
+/// Timelock delay between proposing and executing a policy update (48 hours in seconds).
+pub const TIMELOCK_DURATION: u64 = 48 * 60 * 60;
 
 fn validate_policy(policy: &LoanPolicy) -> Result<(), Error> {
     if policy.membership_contribution <= 0
@@ -23,6 +26,7 @@ fn validate_policy(policy: &LoanPolicy) -> Result<(), Error> {
         || policy.default_grace_period > 30 * 24 * 60 * 60
         || policy.treasury_threshold == 0
         || policy.treasury_threshold as i128 > BASIS_POINTS
+        || policy.quorum_bps as i128 > BASIS_POINTS
     {
         return Err(Error::InvalidLoanPolicy);
     }
@@ -137,13 +141,58 @@ pub fn set_consensus_threshold(env: &Env, caller: Address, threshold: u32) -> Re
     Ok(())
 }
 
-pub fn set_policy(env: &Env, caller: Address, policy: LoanPolicy) -> Result<(), Error> {
+pub fn propose_policy_update(
+    env: &Env,
+    caller: Address,
+    policy: LoanPolicy,
+) -> Result<(), Error> {
     util::require_admin(env, &caller)?;
     validate_policy(&policy)?;
-    storage::set_policy(env, &policy);
+    let now = env.ledger().timestamp();
+    let execution_time = now + TIMELOCK_DURATION;
+    let update = PendingPolicyUpdate {
+        policy,
+        proposed_at: now,
+        execution_time,
+    };
+    storage::set_pending_policy_update(env, &update);
+    extend_instance(env);
+    env.events()
+        .publish((symbol_short!("pol_prop"),), (caller, execution_time));
+    Ok(())
+}
+
+pub fn execute_policy_update(env: &Env, caller: Address) -> Result<(), Error> {
+    util::require_admin(env, &caller)?;
+    let update = storage::get_pending_policy_update(env).ok_or(Error::NoPendingPolicy)?;
+    let now = env.ledger().timestamp();
+    if now < update.execution_time {
+        return Err(Error::TimelockNotExpired);
+    }
+    storage::set_policy(env, &update.policy);
+    storage::remove_pending_policy_update(env);
     extend_instance(env);
     env.events().publish((symbol_short!("policy"),), ());
     Ok(())
+}
+
+pub fn cancel_policy_update(env: &Env, caller: Address) -> Result<(), Error> {
+    util::require_admin(env, &caller)?;
+    if storage::get_pending_policy_update(env).is_none() {
+        return Err(Error::NoPendingPolicy);
+    }
+    storage::remove_pending_policy_update(env);
+    extend_instance(env);
+    env.events().publish((symbol_short!("pol_canc"),), caller);
+    Ok(())
+}
+
+pub fn get_pending_policy_update(env: &Env) -> Option<PendingPolicyUpdate> {
+    storage::get_pending_policy_update(env)
+}
+
+pub fn set_policy(env: &Env, caller: Address, policy: LoanPolicy) -> Result<(), Error> {
+    propose_policy_update(env, caller, policy)
 }
 
 pub fn pause(env: &Env, caller: Address) -> Result<(), Error> {

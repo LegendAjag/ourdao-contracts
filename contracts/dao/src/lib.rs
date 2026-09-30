@@ -33,7 +33,10 @@ use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, V
 
 pub use error::Error;
 pub use storage::ProposalKind;
-pub use types::{Loan, LoanPolicy, LoanProposal, LoanTerms, Member, TreasuryProposal};
+pub use types::{
+    Loan, LoanPolicy, LoanProposal, LoanTerms, Member, PendingPolicyUpdate, StakingRewardClaimed,
+    TreasuryProposal,
+};
 
 #[contract]
 pub struct OurDao;
@@ -75,6 +78,22 @@ impl OurDao {
         admin::set_consensus_threshold(&env, caller, threshold)
     }
 
+    pub fn propose_policy_update(
+        env: Env,
+        caller: Address,
+        policy: LoanPolicy,
+    ) -> Result<(), Error> {
+        admin::propose_policy_update(&env, caller, policy)
+    }
+
+    pub fn execute_policy_update(env: Env, caller: Address) -> Result<(), Error> {
+        admin::execute_policy_update(&env, caller)
+    }
+
+    pub fn cancel_policy_update(env: Env, caller: Address) -> Result<(), Error> {
+        admin::cancel_policy_update(&env, caller)
+    }
+
     pub fn set_loan_policy(env: Env, caller: Address, policy: LoanPolicy) -> Result<(), Error> {
         admin::set_policy(&env, caller, policy)
     }
@@ -104,8 +123,13 @@ impl OurDao {
 
     // ==================== loans ====================
 
-    pub fn request_loan(env: Env, borrower: Address, amount: i128) -> Result<u32, Error> {
-        loans::request_loan(&env, borrower, amount)
+    pub fn request_loan(
+        env: Env,
+        borrower: Address,
+        amount: i128,
+        metadata_cid: Option<String>,
+    ) -> Result<u32, Error> {
+        loans::request_loan(&env, borrower, amount, metadata_cid)
     }
 
     pub fn edit_loan_proposal(
@@ -279,6 +303,10 @@ impl OurDao {
 
     pub fn get_loan_policy(env: Env) -> LoanPolicy {
         storage::get_policy(&env)
+    }
+
+    pub fn get_pending_policy_update(env: Env) -> Option<PendingPolicyUpdate> {
+        admin::get_pending_policy_update(&env)
     }
 
     pub fn get_admins(env: Env) -> Vec<Address> {
