@@ -54,7 +54,7 @@ Four Soroban-native features beyond the core lending/treasury flow, each fully i
 | Name registry | On-chain **name registry** (name ⇄ address, 1:1) | `registry.rs` |
 | Content-hash metadata | Anchor an IPFS CID / digest to a loan or treasury proposal | `docs.rs` |
 | Commit-reveal voting | **Commit-reveal voting** for private treasury proposals (`sha256(support ++ salt)`, revealed later, tallied through the same code path as public votes) | `privacy.rs` |
-| Staking | **Staking** for a capped voting-weight boost (1 base vote + up to 5 bonus, 100 token units per bonus vote), tracked separately so staked funds are never lent out or counted as treasury | `staking.rs` |
+| Staking | **Staking** for a capped voting-weight boost (1 base vote + up to 5 bonus, on a quadratic curve: the *k*-th bonus vote costs `k² × 100` staked tokens), tracked separately so staked funds are never lent out or counted as treasury | `staking.rs` |
 
 ## Architecture & design decisions
 
@@ -85,7 +85,7 @@ contracts/dao/
     util.rs        # token client, auth guards, vote math
     test.rs        # full test suite (19 tests)
   scripts/
-    deploy-testnet.sh   # funds a deployer identity, builds, deploys, prints an initialize command
+    deploy-testnet.sh   # builds, deploys AND initializes; --dry-run, guarded against non-testnet
 ```
 
 ## Public interface (ABI)
@@ -133,7 +133,7 @@ All entrypoints are on the `OurDao` contract (`lib.rs`). Errors are the numeric 
 
 | Method | Description |
 |---|---|
-| `stake(member, amount)` / `unstake(member, amount)` | Boosts voting weight; kept separate from lendable treasury. |
+| `stake(member, amount)` / `unstake(member, amount)` | Boosts voting weight quadratically (`1 + isqrt(stake / 100)`, capped at 6); kept separate from lendable treasury. |
 
 **Name registry**
 
@@ -238,19 +238,50 @@ CI (`.github/workflows/ci.yml`) runs `cargo fmt --check`, `cargo clippy -- -D wa
 
 ## Deploy to testnet
 
-The quickest path is the helper script, which creates and funds a deployer
-identity (via friendbot), builds the optimized wasm, deploys, and prints the
-contract id plus a ready-to-edit `initialize` command:
+The quickest path is the helper script. It creates and funds a deployer
+identity (via friendbot), builds the optimized wasm, prints the wasm SHA-256,
+asks for confirmation, deploys, and then runs `initialize` in the same
+invocation so a contract is never left deployed-but-uninitialized (which would
+let anyone front-run `initialize`):
 
 ```bash
-./scripts/deploy-testnet.sh
+./scripts/deploy-testnet.sh --dry-run   # print every command, change nothing
+./scripts/deploy-testnet.sh             # the real thing (asks for confirmation)
 ```
 
-Override the defaults with environment variables if needed:
+By default the DAO uses the native XLM Stellar Asset Contract, with the deployer
+as the only admin. Override the defaults with environment variables:
 
 ```bash
-IDENTITY=my-key NETWORK=testnet ALIAS=ourdao-dao ./scripts/deploy-testnet.sh
+IDENTITY=my-key ALIAS=ourdao-dao TOKEN=<token-contract-id> \
+  ADMINS_JSON='["G...","G..."]' CONSENSUS_THRESHOLD=5100 MEMBERSHIP_FEE=10000000 \
+  ./scripts/deploy-testnet.sh
 ```
+
+`POLICY_JSON` overrides the default loan policy; see `./scripts/deploy-testnet.sh --help`
+for every option. If `initialize` fails after the deploy, the script says so
+loudly and exits non-zero: initialize that contract immediately or discard it.
+
+### Deploying to mainnet
+
+The script refuses any network other than `testnet` unless you pass
+`--allow-non-testnet` (an exported `NETWORK=mainnet` alone does nothing). For
+another network it is deliberately stricter:
+
+- it never generates or funds keys: the deployer identity must already exist,
+- `TOKEN` must be set explicitly (there is no default asset),
+- it needs an interactive terminal and you must type the network name to
+  confirm; `--yes` does not skip this.
+
+```bash
+./scripts/deploy-testnet.sh --dry-run --allow-non-testnet --network mainnet   # review first
+TOKEN=<usdc-contract-id> IDENTITY=<existing-key> \
+  ./scripts/deploy-testnet.sh --allow-non-testnet --network mainnet
+```
+
+The contract cannot be upgraded after deployment, so review the dry run, check
+the printed wasm SHA-256 against a release (see `DEPLOYMENTS.md`), and get the
+audit items in `docs/AUDIT_PREPARATION.md` closed before deploying real funds.
 
 Or deploy manually:
 

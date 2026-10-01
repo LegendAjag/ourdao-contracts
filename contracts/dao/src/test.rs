@@ -14,6 +14,101 @@ use crate::admin::TIMELOCK_DURATION;
 use crate::types::{LoanPolicy, LoanStatus, MemberStatus, ProposalPhase, ProposalStatus};
 use crate::{Error, OurDao, OurDaoClient};
 
+#[soroban_sdk::contracttype]
+#[derive(Clone)]
+enum RejectingTokenKey {
+    Balance(Address),
+    RejectTransfers,
+}
+
+#[soroban_sdk::contract]
+struct RejectingToken;
+
+#[soroban_sdk::contractimpl]
+impl RejectingToken {
+    pub fn mint(env: Env, to: Address, amount: i128) {
+        let key = RejectingTokenKey::Balance(to);
+        let current: i128 = env.storage().instance().get(&key).unwrap_or(0);
+        env.storage().instance().set(&key, &(current + amount));
+    }
+
+    pub fn set_reject_transfers(env: Env, reject: bool) {
+        env.storage()
+            .instance()
+            .set(&RejectingTokenKey::RejectTransfers, &reject);
+    }
+
+    pub fn balance(env: Env, id: Address) -> i128 {
+        env.storage()
+            .instance()
+            .get(&RejectingTokenKey::Balance(id))
+            .unwrap_or(0)
+    }
+
+    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
+        let reject: bool = env
+            .storage()
+            .instance()
+            .get(&RejectingTokenKey::RejectTransfers)
+            .unwrap_or(false);
+        if reject {
+            panic!("mock token transfer rejected");
+        }
+        if amount < 0 {
+            panic!("negative transfer");
+        }
+
+        let from_key = RejectingTokenKey::Balance(from);
+        let to_key = RejectingTokenKey::Balance(to);
+        let from_balance: i128 = env.storage().instance().get(&from_key).unwrap_or(0);
+        if from_balance < amount {
+            panic!("insufficient balance");
+        }
+        let to_balance: i128 = env.storage().instance().get(&to_key).unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&from_key, &(from_balance - amount));
+        env.storage().instance().set(&to_key, &(to_balance + amount));
+    }
+}
+
+struct RejectingSetup<'a> {
+    env: Env,
+    client: OurDaoClient<'a>,
+    token: RejectingTokenClient<'a>,
+    members: Vec<Address>,
+}
+
+fn rejecting_setup(num_members: u32) -> RejectingSetup<'static> {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let token_id = env.register(RejectingToken, ());
+    let token = RejectingTokenClient::new(&env, &token_id);
+    let admin = Address::generate(&env);
+    let contract_id = env.register(OurDao, ());
+    let client = OurDaoClient::new(&env, &contract_id);
+
+    let mut admins = Vec::new(&env);
+    admins.push_back(admin);
+    client.initialize(&admins, &5_100u32, &FEE, &token_id, &policy());
+
+    let mut members = Vec::new(&env);
+    for _ in 0..num_members {
+        let member = Address::generate(&env);
+        token.mint(&member, &MINT);
+        client.register_member(&member);
+        members.push_back(member);
+    }
+
+    RejectingSetup {
+        env,
+        client,
+        token,
+        members,
+    }
+}
+
 const FEE: i128 = 1_000;
 const MINT: i128 = 1_000_000;
 const EDITING: u64 = 3 * 24 * 60 * 60;
@@ -1890,6 +1985,118 @@ fn proposal_creation_rejects_invalid_cid() {
     );
     let err_long = s.client.try_request_loan(&borrower, &500, &Some(long_cid));
     assert_eq!(err_long, Err(Ok(Error::DocumentTooLarge)));
+}
+
+// ===========================================================================
+// Issue: Emit ProposalCancelled event when proposal is retracted during
+// editing period
+// ===========================================================================
+
+#[test]
+fn cancel_loan_proposal_emits_event_and_sets_cancelled_status() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    let prop = s.client.get_loan_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Pending);
+    assert_eq!(prop.phase, ProposalPhase::Editing);
+
+    s.client.cancel_loan_proposal(&borrower, &pid);
+
+    let prop = s.client.get_loan_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Cancelled);
+
+    assert!(emitted(&s.env, "prop_canc"));
+
+    let all_events = s.env.events().all();
+    let events_vec = all_events.events();
+    let event = events_vec
+        .iter()
+        .rev()
+        .find(|e| {
+            let ContractEventBody::V0(body) = &e.body;
+            matches!(body.topics.first(), Some(ScVal::Symbol(sym)) if sym.0.to_utf8_string_lossy() == "prop_canc")
+        })
+        .expect("prop_canc event not found");
+
+    let ContractEventBody::V0(body) = &event.body;
+    assert_eq!(body.topics.len(), 2);
+    match &body.topics[0] {
+        ScVal::Symbol(sym) => assert_eq!(sym.0.to_utf8_string_lossy(), "prop_canc"),
+        _ => panic!("unexpected topic 0"),
+    }
+    match &body.topics[1] {
+        ScVal::U64(id) => assert_eq!(*id, pid),
+        _ => panic!("unexpected topic 1"),
+    }
+}
+
+#[test]
+fn cancel_treasury_proposal_emits_event_and_sets_cancelled_status() {
+    let s = setup(3);
+    let proposer = s.members.get(0).unwrap();
+    let dest = Address::generate(&s.env);
+    let reason = String::from_str(&s.env, "grant");
+
+    let pid = s
+        .client
+        .propose_treasury_withdrawal(&proposer, &600, &dest, &reason, &false);
+    let prop = s.client.get_treasury_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Pending);
+
+    s.client.cancel_treasury_proposal(&proposer, &pid);
+
+    let prop = s.client.get_treasury_proposal(&pid).unwrap();
+    assert_eq!(prop.status, ProposalStatus::Cancelled);
+
+    assert!(emitted(&s.env, "prop_canc"));
+
+    let all_events = s.env.events().all();
+    let events_vec = all_events.events();
+    let event = events_vec
+        .iter()
+        .rev()
+        .find(|e| {
+            let ContractEventBody::V0(body) = &e.body;
+            matches!(body.topics.first(), Some(ScVal::Symbol(sym)) if sym.0.to_utf8_string_lossy() == "prop_canc")
+        })
+        .expect("prop_canc event not found");
+
+    let ContractEventBody::V0(body) = &event.body;
+    assert_eq!(body.topics.len(), 2);
+    match &body.topics[0] {
+        ScVal::Symbol(sym) => assert_eq!(sym.0.to_utf8_string_lossy(), "prop_canc"),
+        _ => panic!("unexpected topic 0"),
+    }
+    match &body.topics[1] {
+        ScVal::U64(id) => assert_eq!(*id, pid),
+        _ => panic!("unexpected topic 1"),
+    }
+}
+
+#[test]
+fn cancel_loan_proposal_after_editing_period_rejected() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+    advance(&s.env, EDITING + 1);
+
+    let res = s.client.try_cancel_loan_proposal(&borrower, &pid);
+    assert_eq!(res, Err(Ok(Error::NotInEditingPhase)));
+}
+
+#[test]
+fn cancel_loan_proposal_by_non_proposer_rejected() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let other = s.members.get(1).unwrap();
+
+    let pid = s.client.request_loan(&borrower, &500, &None);
+
+    let res = s.client.try_cancel_loan_proposal(&other, &pid);
+    assert_eq!(res, Err(Ok(Error::NotAuthorized)));
 }
 fn rejected_treasury_transfer_rolls_back_approval_vote_and_execution_state() {
     let s = rejecting_setup(3);

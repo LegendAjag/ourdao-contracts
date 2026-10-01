@@ -15,10 +15,12 @@ All notable changes to `ourdao-contracts` are documented here. The format follow
 - `bench-cost.sh` and a budget scaling benchmark; resource costs and the membership ceiling documented (#138).
 - `generate-abi.sh` for a wasm-derived interface (#135).
 - Property tests for exit-share, interest and staking-weight math.
+- `util::isqrt`: an overflow-free integer square root over the whole `i128` range, backing the quadratic staking curve (#182).
 - CI: `cargo clippy`, `cargo audit` and a `cargo-llvm-cov` coverage floor of 95% (#62).
 
 ### Changed
 - `Member.join_ledger` renamed to `join_time` (#55).
+- Staking boost is quadratic instead of linear: `voting_weight` is now `1 + min(isqrt(stake / 100), 5)`, so the *k*-th bonus vote costs `k² × 100` staked tokens and a whale can no longer buy proportional control (#182).
 - Admin policy bounds tightened (#53, #54); loan eligibility checks and the `is_eligible_for_loan` signature corrected (#52, #56).
 - Proposal document attachment is restricted to the proposal's own owner, and rejected after the editing phase (#59).
 

@@ -1,0 +1,10 @@
+mod admin;
+mod common;
+mod docs;
+mod loans;
+mod membership;
+mod privacy;
+mod properties;
+mod registry;
+mod staking;
+mod treasury;

@@ -1,0 +1,219 @@
+use soroban_sdk::testutils::Address as _;
+use soroban_sdk::Address;
+
+use super::common::*;
+use crate::types::MemberStatus;
+use crate::Error;
+
+#[test]
+fn init_and_membership() {
+    let s = setup(3);
+    assert_eq!(s.client.get_total_members(), 3);
+    assert_eq!(s.client.get_active_members(), 3);
+    assert_eq!(s.client.get_treasury_balance(), 3 * FEE);
+    assert!(s.client.is_member(&s.members.get(0).unwrap()));
+    assert!(s.client.is_admin(&s.admin));
+    assert_eq!(s.client.get_consensus_threshold(), 5_100);
+
+    let m = s.client.get_member(&s.members.get(0).unwrap()).unwrap();
+    assert_eq!(m.status, MemberStatus::ActiveMember);
+    assert_eq!(m.contribution, FEE);
+}
+
+#[test]
+fn double_join_rejected() {
+    let s = setup(1);
+    let m = s.members.get(0).unwrap();
+    let res = s.client.try_register_member(&m);
+    assert_eq!(res, Err(Ok(Error::AlreadyMember)));
+}
+
+#[test]
+fn exit_returns_share() {
+    let s = setup(2);
+    let m = s.members.get(0).unwrap();
+    let before = s.token.balance(&m);
+    let share = s.client.calculate_exit_share(&m);
+    assert!(share > 0);
+    s.client.exit_dao(&m);
+    assert_eq!(s.token.balance(&m), before + share);
+    assert_eq!(s.client.get_active_members(), 1);
+    assert!(!s.client.is_member(&m));
+}
+
+// ==================== issue #4: yield accumulator ====================
+#[test]
+fn yield_accumulator_join_claim_exit_rejoin() {
+    let s = setup(3);
+    let borrower = s.members.get(0).unwrap();
+    let v1 = s.members.get(1).unwrap();
+    let v2 = s.members.get(2).unwrap();
+
+    // Get a loan approved and repaid so interest is distributed.
+    let pid = s.client.request_loan(&borrower, &1_000, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&v1, &pid, &true);
+    s.client.vote_on_loan_proposal(&v2, &pid, &true);
+    s.client.repay_loan(&borrower, &0);
+
+    let loan = s.client.get_loan(&0).unwrap();
+    let interest = loan.total_repayment - loan.principal;
+    let per_member = interest / 3;
+
+    // Both non-borrower members can claim their share.
+    assert_eq!(s.client.get_pending_yield(&v1), per_member);
+    assert_eq!(s.client.get_pending_yield(&v2), per_member);
+    s.client.claim_rewards(&v1);
+    assert_eq!(s.client.get_pending_yield(&v1), 0);
+
+    // v1 exits — their snapshot is settled so they don't double-claim.
+    s.client.exit_dao(&v1);
+    assert_eq!(s.client.get_pending_yield(&v1), 0);
+
+    // v1 rejoins — snapshot is set to current accumulator, earning nothing
+    // from interest that accrued before they rejoined.
+    s.client.register_member(&v1);
+    assert_eq!(s.client.get_pending_yield(&v1), 0);
+}
+
+// ==================== issue: total_contributions ====================
+#[test]
+fn ten_join_five_exit_pays_remaining_members_full_share() {
+    let s = setup(10);
+
+    for i in 0..5u32 {
+        let m = s.members.get(i).unwrap();
+        assert_eq!(s.client.calculate_exit_share(&m), FEE);
+        s.client.exit_dao(&m);
+    }
+
+    assert_eq!(s.client.get_total_members(), 10);
+    assert_eq!(s.client.get_active_members(), 5);
+    assert_eq!(s.client.get_treasury_balance(), 5 * FEE);
+
+    for i in 5..10u32 {
+        let m = s.members.get(i).unwrap();
+        assert_eq!(s.client.calculate_exit_share(&m), FEE);
+    }
+}
+
+#[test]
+fn rejoin_after_exit_is_counted_once_not_twice() {
+    let s = setup(3);
+    let m = s.members.get(0).unwrap();
+
+    s.client.exit_dao(&m);
+    assert_eq!(s.client.get_active_members(), 2);
+
+    s.client.register_member(&m);
+    assert_eq!(s.client.get_total_members(), 4);
+    assert_eq!(s.client.get_active_members(), 3);
+    assert_eq!(s.client.calculate_exit_share(&m), FEE);
+}
+
+#[test]
+fn mixed_joins_exits_defaults_never_strand_value() {
+    let s = setup(3);
+    let a = s.members.get(0).unwrap();
+    let b = s.members.get(1).unwrap();
+    let c = s.members.get(2).unwrap();
+
+    let pid = s.client.request_loan(&a, &500, &None);
+    advance(&s.env, EDITING + 1);
+    s.client.vote_on_loan_proposal(&b, &pid, &true);
+    s.client.vote_on_loan_proposal(&c, &pid, &true);
+
+    s.client.exit_dao(&c);
+    let b_share_before_default = s.client.calculate_exit_share(&b);
+
+    advance(&s.env, LOAN_DURATION + 1);
+    s.client.mark_loan_defaulted(&pid);
+
+    let b_share_after_default = s.client.calculate_exit_share(&b);
+    assert!(b_share_after_default > b_share_before_default);
+
+    s.client.exit_dao(&b);
+    s.client.register_member(&c);
+
+    assert_eq!(s.client.get_total_members(), 4);
+    assert_eq!(s.client.get_active_members(), 2);
+
+    let mut sum = 0i128;
+    for i in 0..3u32 {
+        let m = s.members.get(i).unwrap();
+        if s.client.is_member(&m) {
+            sum += s.client.calculate_exit_share(&m);
+        }
+    }
+    assert!(sum <= s.client.get_treasury_balance());
+}
+
+#[test]
+fn bench_exit_dao_scaling() {
+    // #138: Measure cost of exit_dao at different sizes
+    for size in [10, 100, 1000] {
+        let s = setup(size);
+        let m = s.members.get(0).unwrap();
+
+        s.env.budget().reset_unlimited();
+        let cpu_before = s.env.budget().cpu_instruction_cost();
+        s.client.exit_dao(&m);
+        let cpu_after = s.env.budget().cpu_instruction_cost();
+
+        let cost = cpu_after - cpu_before;
+
+        // Fail if cost scales poorly (O(n) check). Keep this no_std-compatible
+        // instead of printing from the contract crate.
+        assert!(
+            size != 1000 || cost <= 50_000_000,
+            "exit_dao cost exceeds O(1) bound"
+        );
+    }
+}
+
+#[test]
+fn rejected_register_member_transfer_rolls_back_all_membership_state() {
+    let s = rejecting_setup(0);
+    let member = Address::generate(&s.env);
+    s.token.mint(&member, &MINT);
+    s.token.set_reject_transfers(&true);
+
+    let result = s.client.try_register_member(&member);
+    assert!(result.is_err());
+
+    assert_eq!(s.client.get_total_members(), 0);
+    assert_eq!(s.client.get_active_members(), 0);
+    assert!(!s.client.is_member(&member));
+    assert!(s.client.get_member(&member).is_none());
+    assert_eq!(s.token.balance(&s.client.address), 0);
+}
+
+// ===========================================================================
+// Issue #176: Handle token transfer failure cleanly in exit_dao
+// ===========================================================================
+
+#[test]
+fn exit_dao_returns_error_when_contract_balance_insufficient() {
+    let s = rejecting_setup(2);
+    let member = s.members.get(0).unwrap();
+
+    // Reject all outgoing transfers to simulate a depleted/frozen treasury.
+    s.token.set_reject_transfers(&true);
+
+    let res = s.client.try_exit_dao(&member);
+    assert!(
+        res.is_err(),
+        "exit_dao must fail cleanly when contract cannot pay out"
+    );
+}
+
+#[test]
+fn exit_dao_succeeds_when_treasury_funded() {
+    let s = setup(2);
+    let member = s.members.get(0).unwrap();
+
+    let share = s.client.calculate_exit_share(&member);
+    assert!(share > 0);
+    s.client.exit_dao(&member);
+    assert!(!s.client.is_member(&member));
+}
