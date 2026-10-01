@@ -22,6 +22,10 @@ pub fn compute_commitment(env: &Env, support: bool, salt: &BytesN<32>) -> BytesN
     env.crypto().sha256(&preimage).to_bytes()
 }
 
+// `env.events().publish` is deprecated in soroban-sdk in favour of
+// `#[contractevent]`, but migration is a coordinated, breaking wire-format
+// change (#85).  Suppress per-function so unrelated deprecations still surface.
+#[allow(deprecated)]
 pub fn commit_vote(
     env: &Env,
     voter: Address,
@@ -58,6 +62,7 @@ pub fn commit_vote(
     Ok(())
 }
 
+#[allow(deprecated)]
 pub fn reveal_vote(
     env: &Env,
     voter: Address,

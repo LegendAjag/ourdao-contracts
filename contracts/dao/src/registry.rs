@@ -8,6 +8,10 @@ use crate::storage::{self, DataKey};
 use crate::types::{NAME_MAX_LEN, NAME_MIN_LEN};
 use crate::util;
 
+// `env.events().publish` is deprecated in soroban-sdk in favour of
+// `#[contractevent]`, but migration is a coordinated, breaking wire-format
+// change (#85).  Suppress per-function so unrelated deprecations still surface.
+#[allow(deprecated)]
 pub fn register_name(env: &Env, owner: Address, name: String) -> Result<(), Error> {
     util::require_initialized(env)?;
     util::require_not_paused(env)?;
@@ -45,7 +49,9 @@ pub fn register_name(env: &Env, owner: Address, name: String) -> Result<(), Erro
     // Free any name this owner held previously so lookups stay 1:1.
     if let Some(old) = storage::get_name_of(env, &owner) {
         if old != name {
-            env.storage().persistent().remove(&DataKey::Name(old.clone()));
+            env.storage()
+                .persistent()
+                .remove(&DataKey::Name(old.clone()));
             // Announce the release so the set of free names is
             // reconstructable from the event log alone (issue #124).
             env.events()

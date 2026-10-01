@@ -53,7 +53,7 @@ cargo test --locked                                          # full test suite
 cargo build --locked --target wasm32v1-none --release        # wasm build
 ```
 
-`make test`, `make fmt`, `make clippy`, and `make build` are shorthands for the same things.
+`make ci` runs all four in sequence — use it as your one-command pre-push check. The individual shorthands `make fmt`, `make clippy`, `make test`, and `make build` map flag-for-flag to their CI equivalents.
 
 A separate `audit` job runs `cargo audit` against `Cargo.lock` on every push and PR (`cargo install cargo-audit --locked` once locally, then `cargo audit` or `make audit`). It's a distinct job on purpose: an advisory landing against a dependency we already know about and can't move on (see the `ed25519-dalek` note below) shouldn't block merging unrelated PRs, but it still needs to stay visible.
 

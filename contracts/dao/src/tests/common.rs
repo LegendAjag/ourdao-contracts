@@ -1,0 +1,192 @@
+use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
+use soroban_sdk::xdr::{ContractEventBody, ScVal};
+use soroban_sdk::{token, Address, Env, Vec};
+
+use crate::types::LoanPolicy;
+use crate::{OurDao, OurDaoClient};
+
+pub const FEE: i128 = 1_000;
+pub const MINT: i128 = 1_000_000;
+pub const EDITING: u64 = 3 * 24 * 60 * 60;
+pub const VOTING_PERIOD: u64 = 3 * 24 * 60 * 60;
+pub const LOAN_DURATION: u64 = 30 * 24 * 60 * 60;
+
+#[soroban_sdk::contracttype]
+#[derive(Clone)]
+pub enum RejectingTokenKey {
+    Balance(Address),
+    RejectTransfers,
+}
+
+#[soroban_sdk::contract]
+pub struct RejectingToken;
+
+#[soroban_sdk::contractimpl]
+impl RejectingToken {
+    pub fn mint(env: Env, to: Address, amount: i128) {
+        let key = RejectingTokenKey::Balance(to);
+        let current: i128 = env.storage().instance().get(&key).unwrap_or(0);
+        env.storage().instance().set(&key, &(current + amount));
+    }
+
+    pub fn set_reject_transfers(env: Env, reject: bool) {
+        env.storage()
+            .instance()
+            .set(&RejectingTokenKey::RejectTransfers, &reject);
+    }
+
+    pub fn balance(env: Env, id: Address) -> i128 {
+        env.storage()
+            .instance()
+            .get(&RejectingTokenKey::Balance(id))
+            .unwrap_or(0)
+    }
+
+    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
+        let reject: bool = env
+            .storage()
+            .instance()
+            .get(&RejectingTokenKey::RejectTransfers)
+            .unwrap_or(false);
+        if reject {
+            panic!("mock token transfer rejected");
+        }
+        if amount < 0 {
+            panic!("negative transfer");
+        }
+
+        let from_key = RejectingTokenKey::Balance(from);
+        let to_key = RejectingTokenKey::Balance(to);
+        let from_balance: i128 = env.storage().instance().get(&from_key).unwrap_or(0);
+        if from_balance < amount {
+            panic!("insufficient balance");
+        }
+        let to_balance: i128 = env.storage().instance().get(&to_key).unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&from_key, &(from_balance - amount));
+        env.storage()
+            .instance()
+            .set(&to_key, &(to_balance + amount));
+    }
+}
+
+pub struct RejectingSetup<'a> {
+    pub env: Env,
+    pub client: OurDaoClient<'a>,
+    pub token: RejectingTokenClient<'a>,
+    pub members: Vec<Address>,
+}
+
+pub fn rejecting_setup(num_members: u32) -> RejectingSetup<'static> {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let token_id = env.register(RejectingToken, ());
+    let token = RejectingTokenClient::new(&env, &token_id);
+    let admin = Address::generate(&env);
+    let contract_id = env.register(OurDao, ());
+    let client = OurDaoClient::new(&env, &contract_id);
+
+    let mut admins = Vec::new(&env);
+    admins.push_back(admin);
+    client.initialize(&admins, &5_100u32, &FEE, &token_id, &policy());
+
+    let mut members = Vec::new(&env);
+    for _ in 0..num_members {
+        let member = Address::generate(&env);
+        token.mint(&member, &MINT);
+        client.register_member(&member);
+        members.push_back(member);
+    }
+
+    RejectingSetup {
+        env,
+        client,
+        token,
+        members,
+    }
+}
+
+pub struct Setup<'a> {
+    pub env: Env,
+    pub client: OurDaoClient<'a>,
+    pub token: token::Client<'a>,
+    pub admin: Address,
+    pub members: Vec<Address>,
+}
+
+pub fn policy() -> LoanPolicy {
+    LoanPolicy {
+        min_membership_duration: 0,
+        membership_contribution: FEE,
+        max_loan_duration: 30 * 24 * 60 * 60,
+        min_interest_rate: 500,   // 5%
+        max_interest_rate: 2_000, // 20%
+        cooldown_period: 0,
+        max_loan_to_treasury_ratio: 5_000, // 50%
+        default_grace_period: 0,
+        default_penalty_bps: 2_000, // 20%
+        editing_period: EDITING,
+        voting_period: VOTING_PERIOD,
+        treasury_threshold: 5_100, // 51%
+        quorum_bps: 0,
+    }
+}
+
+pub fn setup(num_members: u32) -> Setup<'static> {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let token_admin = Address::generate(&env);
+    let sac = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_id = sac.address();
+    let token = token::Client::new(&env, &token_id);
+    let token_mint = token::StellarAssetClient::new(&env, &token_id);
+
+    let admin = Address::generate(&env);
+    let contract_id = env.register(OurDao, ());
+    let client = OurDaoClient::new(&env, &contract_id);
+
+    let mut admins = Vec::new(&env);
+    admins.push_back(admin.clone());
+    client.initialize(&admins, &5_100u32, &FEE, &token_id, &policy());
+
+    let mut members = Vec::new(&env);
+    for _ in 0..num_members {
+        let m = Address::generate(&env);
+        token_mint.mint(&m, &MINT);
+        client.register_member(&m);
+        members.push_back(m);
+    }
+
+    Setup {
+        env,
+        client,
+        token,
+        admin,
+        members,
+    }
+}
+
+pub fn advance(env: &Env, secs: u64) {
+    env.ledger().with_mut(|li| li.timestamp += secs);
+}
+
+// Approved-but-unfundable path (#108): a proposal passes its vote while the
+// treasury can't cover it, so it parks in ApprovedPendingDisbursement and
+// emits `loan_wait` / `tre_wait` instead of paying out.
+/// True if any event from the most recent invocation has `name` as its first topic.
+pub fn emitted(env: &Env, name: &str) -> bool {
+    env.events().all().events().iter().any(|e| {
+        let ContractEventBody::V0(body) = &e.body;
+        matches!(body.topics.first(), Some(ScVal::Symbol(sym)) if sym.0.to_utf8_string_lossy() == name)
+    })
+}
+
+/// Join a new member (mints their fee first), growing the treasury by FEE.
+pub fn refill_treasury(s: &Setup) {
+    let m = Address::generate(&s.env);
+    token::StellarAssetClient::new(&s.env, &s.token.address).mint(&m, &MINT);
+    s.client.register_member(&m);
+}

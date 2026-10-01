@@ -1,1 +1,107 @@
-Ly8hIFN0YWtpbmcgbW9kdWxlLiBNZW1iZXJzIGxvY2sgdG9rZW5zIHRvIHNpZ25hbCBjb21taXRtZW50IGFuZCBnYWluIGEK Ly8hIGNhcHBlZCBib29zdCB0byB0aGVpciB2b3Rpbmcgd2VpZ2h0IChzZWUgYHV0aWw6OnZvdGluZ193ZWlnaHRgKS4gU3Rha2Vk Ci8vISBmdW5kcyBhcmUgdHJhY2tlZCBzZXBhcmF0ZWx5IGZyb20gdGhlIHRyZWFzdXJ5IGFuZCBhcmUgbmV2ZXIgbGVudCBvdXQgb3IK Ly8hIGRpc3RyaWJ1dGVkIGFzIHlpZWxkLgoKdXNlIHNvcm9iYW5fc2RrOjp7c3ltYm9sX3Nob3J0LCBBZGRyZXNzLCBFbnZ9OwoK dXNlIGNyYXRlOjplcnJvcjo6RXJyb3I7CnVzZSBjcmF0ZTo6c3RvcmFnZTsKdXNlIGNyYXRlOjp1dGlsOwoKcHViIGZuIHN0YWtl KGVudjogJkVudiwgbWVtYmVyOiBBZGRyZXNzLCBhbW91bnQ6IGkxMjgpIC0+IFJlc3VsdDwoKSwgRXJyb3I+IHsKICAgIHV0 aWw6OnJlcXVpcmVfaW5pdGlhbGl6ZWQoZW52KT87CiAgICB1dGlsOjpyZXF1aXJlX25vdF9wYXVzZWQoZW52KT87CiAgICB1 dGlsOjpyZXF1aXJlX2FjdGl2ZV9tZW1iZXIoZW52LCAmbWVtYmVyKT87CiAgICBpZiBhbW91bnQgPD0gMCB7CiAgICAgICAg cmV0dXJuIEVycihFcnJvcjo6SW52YWxpZEFtb3VudCk7CiAgICB9CgogICAgLy8gQ2hlY2tzLUVmZmVjdHMtSW50ZXJhY3Rpb25z OiBwZXJmb3JtIHRoZSBleHRlcm5hbCB0b2tlbiB0cmFuc2ZlciBmaXJzdCBhbmQgdmVyaWZ5IGl0CiAgICAvLyBzdWNjZWVkZWQgYmVmb3JlIG11dGF0aW5nIGFueSBwZXJzaXN0ZW50IHN0YWtlIHN0b3JhZ2UuIEEgY3VzdG9tIFNBQyB0b2tlbgog ICAgLy8gbW9jayBvciBmdXR1cmUgdG9rZW4gc3RhbmRhcmQgbWF5IHJldHVybiBhIGJvb2xlYW4gcmF0aGVyIHRoYW4gdHJhcHBpbmcs CiAgICAvLyBzbyB3ZSBleHBsaWNpdGx5IGNoZWNrIHRoZSByZXR1cm5lZCB2YWx1ZS4KICAgIGxldCB0cmFuc2ZlcnJlZCA9IHV0 aWw6OnRva2VuX2NsaWVudChlbnYpLnRyYW5zZmVyKCZtZW1iZXIsIHV0aWw6OmNvbnRyYWN0X2FkZHJlc3MoZW52KSwgJmFt b3VudCk7CiAgICBpZiAhdHJhbnNmZXJyZWQgewogICAgICAgIHJldHVybiBFcnIoRXJyb3I6OlRyYW5zZmVyRmFpbGVkKTsKICAg IH0KCiAgICAvLyBFZmZlY3RzOiBvbmx5IG5vdyB0aGF0IHRoZSB0cmFuc2ZlciBpcyB2ZXJpZmllZCBkbyB3ZSB1cGRhdGUgc3Rha2UK ICAgIC8vIGFjY291bnRpbmcuCiAgICBsZXQgbmV3X3N0YWtlID0gc3RvcmFnZTo6Z2V0X3N0YWtlKGVudiwgJm1lbWJlcikgKyBhbW91 bnQ7CiAgICBzdG9yYWdlOjpzZXRfc3Rha2UoZW52LCAmbWVtYmVyLCBuZXdfc3Rha2UpOwogICAgc3RvcmFnZTo6c2V0X3RvdGFs X3N0YWtlZChlbnYsIHN0b3JhZ2U6OmdldF90b3RhbF9zdGFrZWQoZW52KSArIGFtb3VudCk7CiAgICBlbnYuc3RvcmFnZSgp LnBlcnNpc3RlbnQoKS5zZXQoJmNyYXRlOjpzdG9yYWdlOjpEYXRhS2V5OjpTdGFrZVRpbWUobWVtYmVyLmNsb25lKCkpLCAm ZW52LmxlZGdlcigpLnRpbWVzdGFtcCgpKTsKICAgIHN0b3JhZ2U6OmV4dGVuZF9pbnN0YW5jZShlbnYpOwoKICAgIGVudi5ldmVu dHMoKQogICAgICAgIC5wdWJsaXNoKChzeW1ib2xfc2hvcnQoInN0YWtlZCIpLCksIChtZW1iZXIsIGFtb3VudCwgbmV3X3N0 YWtlKSk7CiAgICBPaygoKQp9CgpwdWIgZm4gdW5zdGFrZShlbnY6ICZFbnYsIG1lbWJlcjogQWRkcmVzcywgYW1vdW50OiBp MTI4KSAtPiBSZXN1bHQ8KCksIEVycm9yPiB7CiAgICB1dGlsOjpyZXF1aXJlX2luaXRpYWxpemVkKGVudik/OwogICAgdXRp bDo6cmVxdWlyZV9ub3RfcGF1c2VkKGVudik/OwogICAgbWVtYmVyLnJlcXVpcmVfYXV0aCgpOwogICAgaWYgYW1vdW50IDw9 IDAgewogICAgICAgIHJldHVybiBFcnIoRXJyb3I6OkludmFsaWRBbW91bnQpOwogICAgfQoKICAgIGxldCBjdXJyZW50ID0gc3Rv cmFnZTo6Z2V0X3N0YWtlKGVudiwgJm1lbWJlcik7CiAgICBpZiBjdXJyZW50ID09IDAgewogICAgICAgIHJldHVybiBFcnIo RXJyb3I6Ok5vU3Rha2UpOwogICAgfQogICAgaWYgYW1vdW50ID4gY3VycmVudCB7CiAgICAgICAgcmV0dXJuIEVycihFcnJv cjo6SW5zdWZmaWNpZW50U3Rha2UpOwogICAgfQoKICAgIGxldCBsYXN0X3N0YWtlOiB1NjQgPSBlbnYuc3RvcmFnZSgpLnBl cnNpc3RlbnQoKS5nZXQoJmNyYXRlOjpzdG9yYWdlOjpEYXRhS2V5OjpTdGFrZVRpbWUobWVtYmVyLmNsb25lKCkpKS51bndy YXBfb3IoMCk7CiAgICBsZXQgcG9saWN5ID0gc3RvcmFnZTo6Z2V0X3BvbGljeShlbnYpOwogICAgaWYgZW52LmxlZGdlcigp LnRpbWVzdGFtcCgpIDwgbGFzdF9zdGFrZSArIHBvbGljeS52b3RpbmdfcGVyaW9kIHsKICAgICAgICByZXR1cm4gRXJyKEVy cm9yOjpDb29sZG93bkFjdGl2ZSk7CiAgICB9CgogICAgLy8gQ2hlY2tzLUVmZmVjdHMtSW50ZXJhY3Rpb25zOiBmb3IgdW5z dGFraW5nIHRoZSBjb250cmFjdCBpcyB0aGUgc2VuZGVyLCBzbyB3ZSB2ZXJpZnkgdGhlCiAgICAvLyB0cmFuc2ZlciBzdWNjZWVkZWQgYmVmb3JlIGRlYml0aW5nIHRoZSBzdGFrZSBhY2NvdW50aW5nLgogICAgbGV0IHRyYW5zZmVy cmVkID0gdXRpbDo6dG9rZW5fY2xpZW50KGVudikudHJhbnNmZXIoJnV0aWw6OmNvbnRyYWN0X2FkZHJlc3MoZW52KSwgJm1l bWJlciwgJmFtb3VudCk7CiAgICBpZiAhdHJhbnNmZXJyZWQgewogICAgICAgIHJldHVybiBFcnIoRXJyb3I6OlRyYW5zZmVyRmFp bGVkKTsKICAgIH0KCiAgICBsZXQgbmV3X3N0YWtlID0gY3VycmVudCAtIGFtb3VudDsKICAgIHN0b3JhZ2U6OnNldF9zdGFr ZShlbnYsICZtZW1iZXIsIG5ld19zdGFrZSk7CiAgICBzdG9yYWdlOjpzZXRfdG90YWxfc3Rha2VkKGVudiwgc3RvcmFnZTo6 Z2V0X3RvdGFsX3N0YWtlZChlbnYpIC0gYW1vdW50KTsKICAgIHN0b3JhZ2U6OmV4dGVuZF9pbnN0YW5jZShlbnYpOwoKICAg IGVudi5ldmVudHMoKQogICAgICAgIC5wdWJsaXNoKChzeW1ib2xfc2hvcnQoInVuc3Rha2VkIiksKSwgKG1lbWJlciwgYW1v dW50LCBuZXdfc3Rha2UpKTsKICAgIE9rKCgpCn0K
+//! Staking module. Members lock tokens to signal commitment and gain a
+//! capped boost to their voting weight (see `util::voting_weight`). Staked
+//! funds are tracked separately from the treasury and are never lent out or
+//! distributed as yield.
+
+use soroban_sdk::{symbol_short, Address, Env};
+
+use crate::error::Error;
+use crate::storage;
+use crate::types::{ProposalPhase, ProposalStatus};
+use crate::util;
+
+// `env.events().publish` is deprecated in soroban-sdk in favour of
+// `#[contractevent]`, but migration is a coordinated, breaking wire-format
+// change (#85).  Suppress per-function so unrelated deprecations still surface.
+#[allow(deprecated)]
+pub fn stake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
+    util::require_initialized(env)?;
+    util::require_not_paused(env)?;
+    util::require_active_member(env, &member)?;
+    if amount <= 0 {
+        return Err(Error::InvalidAmount);
+    }
+
+    // Checks-Effects-Interactions: perform the external token transfer first and verify it
+    // succeeded before mutating any persistent stake storage. A custom SAC token
+    // mock or future token standard may return a boolean rather than trapping,
+    // so we explicitly check the returned value.
+    let transferred = util::token_client(env).transfer(&member, util::contract_address(env), &amount);
+    if !transferred {
+        return Err(Error::TransferFailed);
+    }
+
+    // Effects: only now that the transfer is verified do we update stake
+    // accounting.
+    let new_stake = storage::get_stake(env, &member) + amount;
+    storage::set_stake(env, &member, new_stake);
+    storage::set_total_staked(env, storage::get_total_staked(env) + amount);
+    env.storage().persistent().set(
+        &crate::storage::DataKey::StakeTime(member.clone()),
+        &env.ledger().timestamp(),
+    );
+    storage::extend_instance(env);
+
+    env.events()
+        .publish((symbol_short!("staked"),), (member, amount, new_stake));
+    Ok(())
+}
+
+#[allow(deprecated)]
+pub fn unstake(env: &Env, member: Address, amount: i128) -> Result<(), Error> {
+    util::require_initialized(env)?;
+    util::require_not_paused(env)?;
+    member.require_auth();
+    if amount <= 0 {
+        return Err(Error::InvalidAmount);
+    }
+
+    let current = storage::get_stake(env, &member);
+    if current == 0 {
+        return Err(Error::NoStake);
+    }
+    if amount > current {
+        return Err(Error::InsufficientStake);
+    }
+
+    let last_stake: u64 = env
+        .storage()
+        .persistent()
+        .get(&crate::storage::DataKey::StakeTime(member.clone()))
+        .unwrap_or(0);
+    let policy = storage::get_policy(env);
+    if env.ledger().timestamp() < last_stake + policy.cooldown_period {
+        return Err(Error::CooldownActive);
+    }
+
+    // Issue #175: disallow unstaking while the member has an active pending
+    // loan proposal still in the voting phase (collateral must remain locked
+    // until the proposal reaches a terminal state).
+    let proposal_count = storage::get_proposal_count(env, storage::DataKey::NextProposalId);
+    for id in 0..proposal_count {
+        if let Some(p) = storage::get_loan_proposal(env, id) {
+            if p.borrower == member
+                && (p.phase == ProposalPhase::Editing || p.phase == ProposalPhase::Voting)
+                && p.status == ProposalStatus::Pending
+            {
+                return Err(Error::HasActiveLoan);
+            }
+        }
+    }
+
+    // Checks-Effects-Interactions: for unstaking the contract is the sender, so we verify the
+    // transfer succeeded before debiting the stake accounting.
+    let transferred = util::token_client(env).transfer(&util::contract_address(env), &member, &amount);
+    if !transferred {
+        return Err(Error::TransferFailed);
+    }
+
+    let new_stake = current - amount;
+    storage::set_stake(env, &member, new_stake);
+    storage::set_total_staked(env, storage::get_total_staked(env) - amount);
+    storage::extend_instance(env);
+
+    env.events()
+        .publish((symbol_short!("unstaked"),), (member, amount, new_stake));
+    Ok(())
+}
