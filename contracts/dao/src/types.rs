@@ -24,6 +24,7 @@ pub enum ProposalStatus {
     Rejected,
     Executed,
     Expired,
+    Cancelled,
 }
 
 #[contracttype]
@@ -84,7 +85,7 @@ pub struct LoanPolicy {
     pub max_loan_to_treasury_ratio: u32,
     /// Extra time past `Loan.due_time` before a loan becomes markable as defaulted.
     pub default_grace_period: u64,
-    /// Basis points of the defaulting borrower's `contribution` slashed on default.
+    /// Basis-points of the defaulting borrower's `contribution` slashed on default.
     pub default_penalty_bps: u32,
     pub editing_period: u64,
     pub voting_period: u64,

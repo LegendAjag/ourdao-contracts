@@ -178,6 +178,42 @@ pub fn edit_loan_proposal(
         (symbol_short!("loan_edit"),),
         (proposal_id, borrower, new_amount, terms.total_repayment),
     );
+    Ok(()
+}
+
+/// Cancel a loan proposal during its editing period. Only the original
+/// borrower may cancel, on,y while the proposal is still in the editing
+/// phase and pending. Emits a dedicated `ProposalCancelled` event so
+/// off-chain indexers can track cancellations cleanly.
+pub fn cancel_loan_proposal(
+    env: &Env,
+    borrower: Address,
+    proposal_id: u32,
+) -> Result<(), Error> {
+    util::require_initialized(env)?;
+    util::require_not_paused(env)?;
+    util::require_active_member(env, &borrower)?;
+    let mut proposal =
+        storage::get_loan_proposal(env, proposal_id).ok_or(Error::ProposalNotFound)?;
+    if proposal.borrower != borrower {
+        return Err(Error::NotBorrower);
+    }
+    let now = env.ledger().timestamp();
+    if proposal.phase != ProposalPhase::Editing || now >= proposal.editing_period_end {
+        return Err(Error::NotInEditingPhase);
+    }
+    if proposal.status != ProposalStatus::Pending {
+        return Err(Error::NotInEditingPhase);
+    }
+
+    proposal.status = ProposalStatus::Cancelled;
+    proposal.phase = ProposalPhase::Expired;
+    storage::set_loan_proposal(env, &proposal);
+
+    env.events().publish(
+        (symbol_short!("prop_canc"),),
+        (proposal_id, now),
+    );
     Ok(())
 }
 
@@ -272,7 +308,7 @@ pub fn vote_on_loan_proposal(
         }
     }
     storage::set_loan_proposal(env, &proposal);
-    Ok(())
+    Ok(()
 }
 
 pub fn disburse_approved_loan(env: &Env, proposal_id: u32) -> Result<(), Error> {
