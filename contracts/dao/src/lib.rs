@@ -1,7 +1,4 @@
 #![no_std]
-// Events use the classic `env.events().publish` API, which is deprecated in
-// favor of `#[contractevent]` but still fully supported in soroban-sdk 26.
-#![allow(deprecated)]
 //! OurDAO — a member-owned lending DAO for Stellar Soroban.
 //!
 //! All value moves through a single configurable token set at initialization
@@ -27,15 +24,15 @@ mod types;
 mod util;
 
 #[cfg(test)]
-mod test;
+mod tests;
 
 use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, Vec};
 
 pub use error::Error;
 pub use storage::ProposalKind;
 pub use types::{
-    Loan, LoanPolicy, LoanProposal, LoanTerms, Member, PendingPolicyUpdate, StakingRewardClaimed,
-    TreasuryProposal,
+    Loan, LoanPolicy, LoanProposal, LoanTerms, Member, MemberLoanStats, PendingPolicyUpdate,
+    StakingRewardClaimed, TreasuryProposal,
 };
 
 #[contract]
@@ -72,6 +69,14 @@ impl OurDao {
 
     pub fn remove_admin(env: Env, caller: Address, admin: Address) -> Result<(), Error> {
         admin::remove_admin(&env, caller, admin)
+    }
+
+    pub fn set_pauser(env: Env, caller: Address, pauser: Address) -> Result<(), Error> {
+        admin::set_pauser(&env, caller, pauser)
+    }
+
+    pub fn revoke_pauser(env: Env, caller: Address) -> Result<(), Error> {
+        admin::revoke_pauser(&env, caller)
     }
 
     pub fn set_consensus_threshold(env: Env, caller: Address, threshold: u32) -> Result<(), Error> {
@@ -121,6 +126,10 @@ impl OurDao {
         membership::claim_rewards(&env, member)
     }
 
+    pub fn delegate_vote(env: Env, delegator: Address, delegatee: Address) -> Result<(), Error> {
+        membership::delegate_vote(&env, delegator, delegatee)
+    }
+
     // ==================== loans ====================
 
     pub fn request_loan(
@@ -148,6 +157,17 @@ impl OurDao {
         support: bool,
     ) -> Result<(), Error> {
         loans::vote_on_loan_proposal(&env, voter, proposal_id, support)
+    }
+
+    pub fn vote_batch(
+        env: Env,
+        voter: Address,
+        votes: Vec<crate::types::ProposalVote>,
+    ) -> Result<(), Error> {
+        for v in votes.iter() {
+            loans::vote_on_loan_proposal(&env, voter.clone(), v.proposal_id, v.vote)?;
+        }
+        Ok(())
     }
 
     pub fn disburse_approved_loan(env: Env, proposal_id: u32) -> Result<(), Error> {
@@ -207,11 +227,16 @@ impl OurDao {
         treasury::expire_treasury_proposal(&env, proposal_id)
     }
 
-    pub fn execute_treasury_proposal(
-        env: Env,
-        proposal_id: u32,
-    ) -> Result<(), Error> {
+    pub fn execute_treasury_proposal(env: Env, proposal_id: u32) -> Result<(), Error> {
         treasury::execute_approved(&env, proposal_id)
+    }
+
+    // ==================== maintenance ====================
+
+    #[allow(deprecated)]
+    pub fn bump_dao_ttl(env: Env) {
+        storage::extend_instance(&env);
+        env.events().publish((soroban_sdk::symbol_short!("TtlBumped"),), ());
     }
 
     // ==================== native swap: staking ====================
@@ -279,6 +304,19 @@ impl OurDao {
 
     pub fn get_member(env: Env, address: Address) -> Option<Member> {
         storage::get_member(&env, &address)
+    }
+
+    /// Returns `member`'s lifetime loan track record: total loans taken, loans
+    /// fully repaid, and loans currently outstanding. Single O(1) storage read;
+    /// returns `NotMember` if the address has never registered.
+    pub fn get_member_loan_stats(env: Env, member: Address) -> Result<MemberLoanStats, Error> {
+        storage::get_member(&env, &member)
+            .map(|m| MemberLoanStats {
+                total_loans: m.total_loans,
+                repaid_loans: m.repaid_loans,
+                active_loans: m.active_loans,
+            })
+            .ok_or(Error::NotMember)
     }
 
     pub fn get_loan(env: Env, loan_id: u32) -> Option<Loan> {
@@ -352,8 +390,33 @@ impl OurDao {
         storage::is_paused(&env)
     }
 
+    /// Returns this contract's semver, read from CARGO_PKG_VERSION at build
+    /// time (#197) — lets off-chain tooling / indexers detect which
+    /// contract build a given deployment is running without relying on the
+    /// WASM hash alone.
+    pub fn get_version(env: Env) -> String {
+        String::from_str(&env, env!("CARGO_PKG_VERSION"))
+    }
+
     pub fn get_stake(env: Env, member: Address) -> i128 {
         storage::get_stake(&env, &member)
+    }
+
+    /// Returns `member`'s current voting weight (base vote + staking bonus).
+    /// Equivalent to the weight applied when they cast a loan or treasury vote.
+    pub fn get_voting_weight(env: Env, member: Address) -> i128 {
+        util::get_voting_weight(&env, &member)
+    }
+
+    /// Stake tokens required per additional unit of voting bonus.
+    /// Every `stake_weight_unit` tokens staked grants +1 vote, up to the cap.
+    pub fn get_stake_weight_unit(_env: Env) -> i128 {
+        util::get_stake_weight_unit()
+    }
+
+    /// Maximum additional votes a member can earn through staking.
+    pub fn get_max_stake_bonus(_env: Env) -> i128 {
+        util::get_max_stake_bonus()
     }
 
     pub fn get_pending_yield(env: Env, member: Address) -> i128 {

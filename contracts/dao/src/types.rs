@@ -54,6 +54,22 @@ pub struct Member {
     pub share_balance: i128,
     pub has_active_loan: bool,
     pub last_loan_time: u64,
+    /// Lifetime count of loans disbursed to this member.
+    pub total_loans: u32,
+    /// Lifetime count of this member's loans that reached full repayment.
+    pub repaid_loans: u32,
+    /// Loans currently outstanding (disbursed and not yet repaid or defaulted).
+    pub active_loans: u32,
+}
+
+/// On-chain credit track record for a member. Returned by
+/// `get_member_loan_stats` as an O(1) read of the member record.
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MemberLoanStats {
+    pub total_loans: u32,
+    pub repaid_loans: u32,
+    pub active_loans: u32,
 }
 
 /// Tunable lending parameters. Durations are in ledger seconds; rates in bps.
@@ -95,6 +111,8 @@ pub struct LoanProposal {
     pub votes_cast: u32,
     pub voting_period: u64,
     pub metadata_cid: Option<String>,
+    /// Timestamp of the last `edit_loan_proposal` call (`None` if never edited).
+    pub last_edited_at: Option<u64>,
 }
 
 #[contracttype]
@@ -139,6 +157,20 @@ pub struct LoanTerms {
     pub duration: u64,
 }
 
+/// Structured event emitted when a borrower edits loan proposal terms.
+/// Captures prior and updated terms plus the edit timestamp.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LoanTermsEdited {
+    pub proposal_id: u32,
+    pub borrower: Address,
+    pub prev_amount: i128,
+    pub prev_total_repayment: i128,
+    pub new_amount: i128,
+    pub total_repayment: i128,
+    pub edited_at: u64,
+}
+
 /// Pending policy update undergoing timelock delay (#192).
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -155,4 +187,11 @@ pub struct StakingRewardClaimed {
     pub member: Address,
     pub amount: i128,
     pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProposalVote {
+    pub proposal_id: u32,
+    pub vote: bool,
 }

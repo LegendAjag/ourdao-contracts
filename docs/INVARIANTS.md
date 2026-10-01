@@ -102,11 +102,12 @@ Tracking issue: open as follow-up (#134).
 
 ### G1 — Voting weight stays in `[1, 6]`
 **Statement:** `voting_weight(m)` is always in the range `[1, MAX_STAKE_BONUS + 1]`
-(`[1, 6]`). One base vote per active member, plus up to `MAX_STAKE_BONUS` (5)
-bonus votes at `STAKE_WEIGHT_UNIT` (100) tokens per bonus vote.
+(`[1, 6]`). One base vote per active member, plus a square-root boost of up to
+`MAX_STAKE_BONUS` (5) bonus votes (#182).
 
-**Tested:** ✅ `proptests::voting_weight_stays_in_bounds`
-(`contracts/dao/src/test.rs`)
+**Tested:** ✅ `properties::voting_weight_stays_in_bounds`,
+`staking::voting_weight_is_capped_above_the_square_root_curve`
+(`contracts/dao/src/tests/`)
 
 ---
 
@@ -114,8 +115,8 @@ bonus votes at `STAKE_WEIGHT_UNIT` (100) tokens per bonus vote.
 **Statement:** More stake never reduces voting weight:
 `stake_a <= stake_b ⟹ voting_weight(a) <= voting_weight(b)`.
 
-**Tested:** ✅ `proptests::voting_weight_is_monotonic_in_stake`
-(`contracts/dao/src/test.rs`)
+**Tested:** ✅ `properties::voting_weight_is_monotonic_in_stake`
+(`contracts/dao/src/tests/properties.rs`)
 
 ---
 
@@ -124,8 +125,27 @@ bonus votes at `STAKE_WEIGHT_UNIT` (100) tokens per bonus vote.
 `[policy.min_interest_rate, policy.max_interest_rate]`, for any `amount` and
 any treasury size.
 
-**Tested:** ✅ `proptests::loan_terms_rate_stays_within_policy_bounds`
-(`contracts/dao/src/test.rs`)
+**Tested:** ✅ `properties::loan_terms_rate_stays_within_policy_bounds`
+(`contracts/dao/src/tests/properties.rs`)
+
+---
+
+### G4 — The stake boost is quadratic and capped
+**Statement:** `stake_boost(s) == min(isqrt(s / STAKE_WEIGHT_UNIT), MAX_STAKE_BONUS)`,
+i.e. `k` bonus votes cost `STAKE_WEIGHT_UNIT * k * k` staked tokens
+(100 / 400 / 900 / 1600 / 2500). Consequences that must keep holding:
+- inside the band `[k^2, (k + 1)^2)` units the boost is exactly `k`;
+- 4x the stake buys 2x the boost, and no more;
+- past `STAKE_WEIGHT_UNIT * MAX_STAKE_BONUS^2` (2500) the boost is pinned at
+  the cap, so one member can never hold more than 6 votes;
+- the boost is never *more* generous than the linear rule it replaced.
+
+**Tested:** ✅ `properties::boost_is_constant_within_each_square_band`,
+`properties::boost_saturates_at_the_cap`,
+`properties::boost_never_exceeds_the_linear_rule`,
+`properties::isqrt_never_rounds_up`, `staking::isqrt_is_exact_on_every_perfect_square`,
+`staking::quadrupling_stake_doubles_the_boost`
+(`contracts/dao/src/tests/`)
 
 ---
 
